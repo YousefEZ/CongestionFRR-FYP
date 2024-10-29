@@ -215,7 +215,7 @@ int main(int argc, char* argv[])
     // p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
 
     Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize",
-                       StringValue("1000p"));
+                       StringValue("10p"));
     Config::SetDefault(SimulationQueue::getQueueString() + "::MaxSize",
                        StringValue("10p"));
 

@@ -73,8 +73,8 @@ std::string bandwidth_access = "0.5Mbps";
 std::string bandwidth_udp_access = "4Mbps";
 std::string delay_bottleneck = "20ms";
 std::string delay_access = "20ms";
-std::string delay_alternate = "10ms";
-std::string bandwidth_alternate = "2Mbps";
+std::string delay_alternate = "5ms";
+std::string bandwidth_alternate = "4Mbps";
 
 std::string bandwidth_destination = "10Mbps";
 
@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
     // p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
 
     Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize",
-                       StringValue("1000p"));
+                       StringValue("10p"));
     Config::SetDefault(SimulationQueue::getQueueString() + "::MaxSize",
                        StringValue("10p"));
 
@@ -278,7 +278,7 @@ int main(int argc, char* argv[])
     udp_source.SetAttribute("PacketSize", UintegerValue(1024));
 
     ApplicationContainer udp_app = udp_source.Install(nodes.Get(0));
-    udp_app.Start(Seconds(0.0));
+    udp_app.Start(Seconds(9.0));
     udp_app.Stop(Seconds(25.0));
 
     DataRate b_access(bandwidth_access);
@@ -329,8 +329,10 @@ int main(int argc, char* argv[])
         devices_2_3, getDevice<1, ns3::PointToPointNetDevice>(devices_4_3));
 
     // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
-    p2p_destination.EnablePcap(dir, devices_3_5.Get(1), true);
+    p2p_traffic.EnablePcapAll(dir); 
+    p2p_destination.EnablePcapAll(dir);
     p2p_congestion.EnablePcapAll(dir);
+    p2p_congested_link.EnablePcapAll(dir);
 
     Simulator::Run();
     Simulator::Destroy();

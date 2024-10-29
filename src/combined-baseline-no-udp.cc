@@ -28,11 +28,13 @@ uint32_t MTU_bytes = segmentSize + 54;
 // Topology parameters
 std::string bandwidth_primary = "2Mbps";
 std::string bandwidth_access = "0.5Mbps";
-std::string bandwidth_udp_access = "5Mbps";
+std::string bandwidth_udp_access = "4Mbps";
 std::string delay_bottleneck = "20ms";
 std::string delay_access = "20ms";
-std::string delay_alternate = "20ms";
-std::string bandwidth_alternate = "2Mbps";
+std::string delay_alternate = "5ms";
+std::string bandwidth_alternate = "4Mbps";
+
+std::string bandwidth_destination = "10Mbps";
 
 void SetupTCPConfig()
 {
@@ -171,13 +173,22 @@ int main(int argc, char* argv[])
     p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
 
     Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize",
-                       StringValue("1000p"));
+                       StringValue("10p"));
 
     PointToPointHelper p2p_alternate;
     p2p_alternate.SetDeviceAttribute("DataRate",
                                      StringValue(bandwidth_alternate));
     p2p_alternate.SetChannelAttribute("Delay", StringValue(delay_alternate));
     p2p_alternate.SetQueue("ns3::DropTailQueue<Packet>");
+
+    PointToPointHelper p2p_destination;
+  
+    p2p_destination.SetDeviceAttribute("DataRate", StringValue(bandwidth_destination));
+    p2p_destination.SetChannelAttribute("Delay", StringValue(delay_access));
+    // Set the custom queue for the device
+    p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
+   
+
 
     std::list<NetDeviceContainer> tcp_senders;
 
@@ -192,9 +203,9 @@ int main(int argc, char* argv[])
         p2p_alternate.Install(nodes.Get(1), nodes.Get(3));
     NetDeviceContainer devices_4_3 =
         p2p_alternate.Install(nodes.Get(3), nodes.Get(2));
-    NetDeviceContainer devices_3_5 =
-        p2p_traffic.Install(nodes.Get(2), nodes.Get(4));
 
+    NetDeviceContainer devices_3_5 =
+        p2p_destination.Install(nodes.Get(2), nodes.Get(4));
     // Configure PointToPoint link for congestion link
     PointToPointHelper p2p_congestion;
     p2p_congestion.SetDeviceAttribute("DataRate",
@@ -262,11 +273,11 @@ int main(int argc, char* argv[])
         BulkSendHelper tcp_source("ns3::TcpSocketFactory",
                                   InetSocketAddress(receiver_addr, tcp_port));
         tcp_source.SetAttribute("MaxBytes",
-                                UintegerValue(1000000)); // 0 for unlimited data
+                                UintegerValue(500000)); // 0 for unlimited data
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
-        p2p_traffic.EnablePcap(dir, tcp_devices.Get(i)->GetId(), 1);
+        //p2p_traffic.EnablePcap(dir, tcp_devices.Get(i)->GetId(), 1);
 
         tcp_apps.push_back(tcp_source.Install(tcp_devices.Get(i)));
         tcp_apps.back().Start(Seconds(0.0));
@@ -287,9 +298,10 @@ int main(int argc, char* argv[])
     udp_sink_app.Start(Seconds(0.0));
     udp_sink_app.Stop(Seconds(60.0));
 
-    p2p_traffic.EnablePcap(dir, devices_3_5.Get(1), true);
+    p2p_traffic.EnablePcapAll(dir);
     // p2p_traffic.EnablePcapAll(dir);
     p2p_congestion.EnablePcapAll(dir);
+    p2p_destination.EnablePcapAll(dir);
 
     Simulator::Run();
     Simulator::Destroy();
