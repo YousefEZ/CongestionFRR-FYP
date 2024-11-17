@@ -28,11 +28,11 @@ uint32_t MTU_bytes = segmentSize + 54;
 // Topology parameters
 std::string bandwidth_primary = "2Mbps";
 std::string bandwidth_access = "0.5Mbps";
-std::string bandwidth_udp_access = "4Mbps";
+std::string bandwidth_udp_access = "5Mbps";
 std::string delay_bottleneck = "20ms";
 std::string delay_access = "20ms";
-std::string delay_alternate = "5ms";
-std::string bandwidth_alternate = "4Mbps";
+std::string delay_alternate = "10ms";
+std::string bandwidth_alternate = "3Mbps";
 
 std::string bandwidth_destination = "10Mbps";
 

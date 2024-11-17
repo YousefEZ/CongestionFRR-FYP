@@ -7,6 +7,7 @@
 #include "ns3/applications-module.h"
 #include "ns3/log.h"
 #include "ns3/traffic-control-module.h"
+#include "ns3/packet.h"
 
 #include "../libs/frr_queue.h"
 #include "../libs/dummy_congestion_policy.h"
@@ -63,18 +64,19 @@ void setAlternateTarget(const NetDeviceContainer& devices,
     getDevice<INDEX, FRRNetDevice>(devices)->addAlternateTarget(target);
 }
 
+
 // TCP parameters
 uint32_t segmentSize = 1024;
 uint32_t MTU_bytes = segmentSize + 54;
 
 // Topology parameters
-std::string bandwidth_primary = "2Mbps";
-std::string bandwidth_access = "0.5Mbps";
-std::string bandwidth_udp_access = "4Mbps";
+std::string bandwidth_primary = "2KBps";
+std::string bandwidth_access = "2.5KBps";
+std::string bandwidth_udp_access = "5KBps";
 std::string delay_bottleneck = "20ms";
 std::string delay_access = "20ms";
-std::string delay_alternate = "5ms";
-std::string bandwidth_alternate = "4Mbps";
+std::string delay_alternate = "20ms";
+std::string bandwidth_alternate = "1.5KBps";
 
 std::string bandwidth_destination = "10Mbps";
 
@@ -104,6 +106,7 @@ void SetupTCPConfig()
 // NS_LOG_COMPONENT_DEFINE("CongestionFastReRoute");
 int main(int argc, char* argv[])
 {
+    Packet::EnablePrinting();
     int cong_threshold = 0;
     int number_of_tcp_senders = 1;
     std::string dir = "";
@@ -270,16 +273,16 @@ int main(int argc, char* argv[])
     OnOffHelper udp_source("ns3::UdpSocketFactory",
                            InetSocketAddress(receiver_addr, udp_port));
     udp_source.SetAttribute(
-        "OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+        "OnTime", StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
     udp_source.SetAttribute(
-        "OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
+        "OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
     udp_source.SetAttribute("DataRate",
                             DataRateValue(DataRate(bandwidth_udp_access)));
     udp_source.SetAttribute("PacketSize", UintegerValue(1024));
 
     ApplicationContainer udp_app = udp_source.Install(nodes.Get(0));
-    udp_app.Start(Seconds(9.0));
-    udp_app.Stop(Seconds(25.0));
+    udp_app.Start(Seconds(15.0));
+    udp_app.Stop(Seconds(300.0));
 
     DataRate b_access(bandwidth_access);
     DataRate b_bottleneck(bandwidth_primary);
@@ -295,7 +298,7 @@ int main(int argc, char* argv[])
         BulkSendHelper tcp_source("ns3::TcpSocketFactory",
                                   InetSocketAddress(receiver_addr, tcp_port));
         tcp_source.SetAttribute("MaxBytes",
-                                UintegerValue(500000)); // 0 for unlimited data
+                                UintegerValue(100000)); // 0 for unlimited data
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
@@ -303,7 +306,7 @@ int main(int argc, char* argv[])
 
         tcp_apps.push_back(tcp_source.Install(tcp_devices.Get(i)));
         tcp_apps.back().Start(Seconds(0.0));
-        tcp_apps.back().Stop(Seconds(60.0));
+        tcp_apps.back().Stop(Seconds(300.0));
     }
 
     // Packet sink setup (Receiver node)
@@ -311,14 +314,14 @@ int main(int argc, char* argv[])
                           InetSocketAddress(Ipv4Address::GetAny(), tcp_port));
     ApplicationContainer sink_app = sink.Install(nodes.Get(4));
     sink_app.Start(Seconds(0.0));
-    sink_app.Stop(Seconds(60.0));
+    sink_app.Stop(Seconds(300.0));
 
     PacketSinkHelper udp_sink(
         "ns3::UdpSocketFactory",
         InetSocketAddress(Ipv4Address::GetAny(), udp_port));
     ApplicationContainer udp_sink_app = udp_sink.Install(nodes.Get(4));
     udp_sink_app.Start(Seconds(0.0));
-    udp_sink_app.Stop(Seconds(60.0));
+    udp_sink_app.Stop(Seconds(300.0));
 
     // LFA Alternate Path setup
     // Set up an alternate forwarding target, assuming you have an alternate
