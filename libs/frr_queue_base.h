@@ -22,6 +22,21 @@ class FRRQueueBase : public Queue<Packet>
     virtual ~FRRQueueBase() = default;
 
     virtual bool isCongested() = 0;
+    void PrintQueue(std::ostream &os) const
+    {
+      // append ascii header saying CURRENT QUEUE CONTENTS  
+      os << "CURRENT QUEUE CONTENTS" << std::endl;
+      // print each packet in the queue 
+      for (auto it = GetContainer().begin(); it != GetContainer().end(); ++it)
+        {
+            
+          std::stringstream packetStream;
+          (*it)->Print(packetStream);
+          os << packetStream.str() << std::endl;
+          os << std::endl;
+        }
+      os << "END OF QUEUE" << std::endl;
+    }
 };
 
 } // namespace ns3
