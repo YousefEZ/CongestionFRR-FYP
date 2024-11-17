@@ -29,9 +29,11 @@ RUN tar xfj /usr/workspace/ns-allinone-3.41.tar.bz2
 
 # Building the application
 WORKDIR /usr/workspace/ns-allinone-3.41
-RUN ./build.py 
+RUN ./build.py
+
 
 WORKDIR /usr/workspace/ns-allinone-3.41/ns-3.41
+RUN ./ns3 configure --build-profile=debug --out=build/debug
 
 # Copy the script into the container
 COPY entrypoint.sh /usr/workspace/ns-allinone-3.41/ns-3.41/entrypoint.sh

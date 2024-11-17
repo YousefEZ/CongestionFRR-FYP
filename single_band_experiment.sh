@@ -11,15 +11,18 @@ one_band_experiment()
   mkdir -p "$dir/baseline-udp/$seed/1"
   mkdir -p "$dir/baseline-no-udp/$seed/1"
 
-  NS_LOG="LOGIC" ./ns3 run "scratch/combined-frr.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/frr/$seed/1/ --seed=$seed"
-  #NS_LOG="" ./ns3 run "scratch/combined-baseline-udp.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/baseline-udp/$seed/1/ --seed=$seed"
+  NS_LOG="FRRQueue=info|prefix_time" ./ns3 run "scratch/combined-frr.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/frr/$seed/1/ --seed=$seed" 2> $dir/frr/$seed/1/debug.log
+  NS_LOG="" ./ns3 run "scratch/combined-baseline-udp.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/baseline-udp/$seed/1/ --seed=$seed"
   #NS_LOG="" ./ns3 run "scratch/combined-baseline-no-udp.cc --$test_variable=$test_value --tcp_senders=1 --dir=$dir/baseline-no-udp/$seed/1/ --seed=$seed"
 }
 
 
-bandwidth_vals=("2.0Mbps")
-# bandwidth_vals=("2.4Mbps" "2.6Mbps" "2.8Mbps" "3.0Mbps" "3.2Mbps" "3.4Mbps" "3.6Mbps" "3.8Mbps" "4.0Mbps" "4.2Mbps" "4.4Mbps" "4.6Mbps" "4.8Mbps" "5.0Mbps")
-#bandwidth_vals=("3.47Mbps" "3.471Mbps" "3.472Mbps" "3.473Mbps" "3.474Mbps" "3.475Mbps" "3.476Mbps")
+#bandwidth_vals=("2.0Mbps")
+# from 3.0 KBps to 7.0 KBps in increments of 0.25 KBps 
+#
+
+bandwidth_vals=("3.0KBps" "3.25KBps" "3.5KBps" "3.75KBps" "4.0KBps" "4.25KBps" "4.5KBps" "4.75KBps" "5.0KBps" "5.25KBps" "5.5KBps" "5.75KBps" "6.0KBps" "6.25KBps" "6.5KBps" "6.75KBps" "7.0KBps")
+
 for bandwidth_val in "${bandwidth_vals[@]}"; do
   echo "Bandwidth Primary value: $bandwidth_val"
   one_band_experiment "bandwidth_primary" "$bandwidth_val" "50" 
