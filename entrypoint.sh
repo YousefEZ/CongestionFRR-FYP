@@ -8,7 +8,7 @@ cp user_src/* scratch/
 
 # cp ./run_ns3.sh ./.
 
-cp ./single_band_experiment.sh ./. 
+cp ./run_ns3.sh ./. 
 
 ./ns3 build
 
@@ -23,7 +23,7 @@ fi
 
 # ./ns3 run 'scratch/combined-frr.cc --delay_bottleneck=1ms'
 # ./run_ns3.sh
-./single_band_experiment.sh
+./run_ns3.sh
 
 if [ $? -ne 0 ]; then
 	echo "./ns3 run for $name failed"

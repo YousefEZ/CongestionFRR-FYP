@@ -13,6 +13,8 @@ RUN apt-get update && \
 
 # sys dependencies
 RUN apt-get install -y g++ python3 cmake ninja-build git
+RUN apt-get install -y python3-scapy python3-pytest
+
 
 # recommendations
 RUN apt-get install -y ccache gdb valgrind
@@ -34,6 +36,8 @@ RUN ./build.py
 
 WORKDIR /usr/workspace/ns-allinone-3.41/ns-3.41
 RUN ./ns3 configure --build-profile=debug --out=build/debug
+
+RUN ./ns3 build 
 
 # Copy the script into the container
 COPY entrypoint.sh /usr/workspace/ns-allinone-3.41/ns-3.41/entrypoint.sh
