@@ -53,7 +53,12 @@ def flow_completion_time(packets):
     # print(packets[0][TCP].flags)
     for pkt in packets:
         if TCP in pkt:
-            if pkt[TCP].flags & TCP_FIN and pkt[TCP].flags & TCP_ACK:
+            sender, receiver = pkt.getlayer("IP").src, pkt.getlayer("IP").dst
+            if (
+                sender == "10.1.6.2"
+                and pkt[TCP].flags & TCP_FIN
+                and pkt[TCP].flags & TCP_ACK
+            ):
                 return pkt.time
     return None
 
@@ -73,6 +78,7 @@ def get_avg_fc_time(source_directory, senders=1):
     for seed in seeds:
         for i in range(senders):
             sd = f"{source_directory}/{seed}/{senders}/-TrafficSender{i}-1.pcap"
+            sd = f"{source_directory}/{seed}/{senders}/-Receiver-1.pcap"
             result = flow_completion_time(read_pcap(sd))
             assert result is not None, "Unable to read from directory"
             fc_time += result
