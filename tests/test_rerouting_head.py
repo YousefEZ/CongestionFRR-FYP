@@ -47,9 +47,10 @@ def check_out_of_order(pcap_file):
 @hypothesis.given(
     bandwidth_access=hypothesis.strategies.integers(min_value=1, max_value=100),
     bandwidth_udp_access=hypothesis.strategies.integers(min_value=1, max_value=100),
+    delay=hypothesis.strategies.integers(min_value=10, max_value=100),
 )
 @hypothesis.settings(deadline=None, max_examples=15)
-def test_rerouting_head(bandwidth_access, bandwidth_udp_access):
+def test_rerouting_head(bandwidth_access, bandwidth_udp_access, delay):
     dir = "traces/test_rerouting_head/"
     fast_rerouting_command(
         dir=dir,
@@ -57,9 +58,9 @@ def test_rerouting_head(bandwidth_access, bandwidth_udp_access):
         bandwidth_primary=f"{bandwidth_access + bandwidth_udp_access - 1}KBps",
         bandwidth_udp_access=f"{bandwidth_udp_access}KBps",
         bandwidth_alternate="1000KBps",
-        delay_primary="0ms",
+        delay_primary=f"{delay}ms",
         delay_access="0ms",
-        delay_alternate="0ms",
+        delay_alternate=f"{delay//2 - 1}ms",
         udp_start="15.0",
         tcp_bytes=bandwidth_access * 10_000 * 15,
     )
