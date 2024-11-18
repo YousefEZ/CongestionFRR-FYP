@@ -13,7 +13,7 @@ RUN apt-get update && \
 
 # sys dependencies
 RUN apt-get install -y g++ python3 cmake ninja-build git
-RUN apt-get install -y python3-scapy python3-pytest
+RUN apt-get install -y python3-scapy python3-hypothesis python3-pytest
 
 
 # recommendations
