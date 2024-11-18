@@ -34,6 +34,8 @@
 # Traces
 traces/*
 
+**/__pycache__
+
 # traces/*
 
 *.DS_Store
