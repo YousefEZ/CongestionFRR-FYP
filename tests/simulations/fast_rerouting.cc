@@ -29,16 +29,6 @@ using SimulationQueue = FRRQueue<CongestionPolicy>;
 using FRRNetDevice = PointToPointFRRNetDevice<FRRPolicy>;
 using FRRChannel = PointToPointFRRChannel<FRRPolicy>;
 
-void toggleCongestion(Ptr<SimulationQueue> queue)
-{
-    ;
-    // queue->m_congestionPolicy.turnOff();
-}
-
-// void enableRerouting(Ptr<SimulationQueue> queue)
-// {
-//     // queue->m_congestionPolicy.enable();
-// }
 
 NS_OBJECT_ENSURE_REGISTERED(SimulationQueue);
 NS_OBJECT_ENSURE_REGISTERED(FRRChannel);
@@ -109,8 +99,6 @@ int main(int argc, char* argv[])
     Packet::EnablePrinting();
     int cong_threshold = 0;
     int number_of_tcp_senders = 1;
-    float udp_start = 15.0; 
-    int total_bytes = 100000; 
     std::string dir = "";
     CommandLine cmd;
     cmd.AddValue("bandwidth_primary", "Bandwidth primary", bandwidth_primary);
@@ -123,8 +111,6 @@ int main(int argc, char* argv[])
     cmd.AddValue("bandwidth_alternate", "Bandwidth Alternate",
                  bandwidth_alternate);
     cmd.AddValue("tcp_senders", "Number of TCP Senders", number_of_tcp_senders);
-    cmd.AddValue("tcp_bytes", "Amount of TCP bytes", total_bytes);
-    cmd.AddValue("udp_start", "UDP start time", udp_start);
     cmd.AddValue("policy_threshold", "Congestion policy threshold",
                  cong_threshold);
     cmd.AddValue("dir", "Traces directory", dir);
@@ -285,7 +271,7 @@ int main(int argc, char* argv[])
     udp_source.SetAttribute("PacketSize", UintegerValue(1024));
 
     ApplicationContainer udp_app = udp_source.Install(nodes.Get(0));
-    udp_app.Start(Seconds(udp_start));
+    udp_app.Start(Seconds(15.0));
     udp_app.Stop(Seconds(300.0));
 
     DataRate b_access(bandwidth_access);
@@ -302,7 +288,7 @@ int main(int argc, char* argv[])
         BulkSendHelper tcp_source("ns3::TcpSocketFactory",
                                   InetSocketAddress(receiver_addr, tcp_port));
         tcp_source.SetAttribute("MaxBytes",
-                                UintegerValue(total_bytes)); // 0 for unlimited data
+                                UintegerValue(100000)); // 0 for unlimited data
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
