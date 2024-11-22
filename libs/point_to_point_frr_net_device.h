@@ -946,7 +946,7 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::isCongested()
     return dynamic_cast<FRRQueueBase*>(PeekPointer(m_queue))->isCongested();
 }
 
-// #define REROUTE_HEAD 
+// #define REROUTE_HEAD
 
 template <typename FRR_POLICY>
 bool PointToPointFRRNetDevice<FRR_POLICY>::Send(Ptr<Packet> packet,
@@ -967,56 +967,52 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::Send(Ptr<Packet> packet,
     }
 
     if (isCongested()) {
-        if (true){
-          AddHeader(packet, protocolNumber);
-          m_macTxTrace(packet);
-          // NS_LOG_LOGIC("Device is congested, rerouting head");
-          std::stringstream queueStream; 
-          dynamic_cast<FRRQueueBase*>(PeekPointer(m_queue))->PrintQueue(queueStream);
-          NS_LOG_INFO("Congested Queue: " << queueStream.str());
-          Ptr<Packet> head = m_queue->Dequeue();
-          bool result = false;
-          if (m_queue->Enqueue(packet)) 
-          {
-            if (m_txMachineState == READY) 
-            {
-              packet = m_queue->Dequeue();
-              m_snifferTrace(packet);
-              m_promiscSnifferTrace(packet);
-              result = TransmitStart(packet);
+        if (true) {
+            AddHeader(packet, protocolNumber);
+            m_macTxTrace(packet);
+            // NS_LOG_LOGIC("Device is congested, rerouting head");
+            std::stringstream queueStream;
+            dynamic_cast<FRRQueueBase*>(PeekPointer(m_queue))
+                ->PrintQueue(queueStream);
+            NS_LOG_INFO("Congested Queue: " << queueStream.str());
+            Ptr<Packet> head = m_queue->Dequeue();
+            bool result = false;
+            if (m_queue->Enqueue(packet)) {
+                if (m_txMachineState == READY) {
+                    packet = m_queue->Dequeue();
+                    m_snifferTrace(packet);
+                    m_promiscSnifferTrace(packet);
+                    result = TransmitStart(packet);
+                } else {
+                    result = true;
+                }
+            } else {
+                m_macTxDropTrace(packet);
+                result = false;
             }
-            else {
-              result = true;
-            }
-          }
-          else 
-          {
-            m_macTxDropTrace(packet);
-            result = false;
-          }
-          std::stringstream packetStream;
-          head->Print(packetStream);
-          NS_LOG_INFO("Rerouting Packet: " << packetStream.str() << " to " << dest);
-          PppHeader ppp; 
-          ppp.SetProtocol(EtherToPpp(protocolNumber));
-          head->RemoveHeader(ppp);
+            std::stringstream packetStream;
+            head->Print(packetStream);
+            NS_LOG_INFO("Rerouting Packet: " << packetStream.str() << " to "
+                                             << dest);
+            PppHeader ppp;
+            ppp.SetProtocol(EtherToPpp(protocolNumber));
+            head->RemoveHeader(ppp);
 
-          return m_frr_policy.reroute(head, dest, protocolNumber) && result;
+            return m_frr_policy.reroute(head, dest, protocolNumber) && result;
         } else {
-          NS_LOG_LOGIC("Device is congested, rerouting tail");
-          return m_frr_policy.reroute(packet, dest, protocolNumber);
-        } 
+            NS_LOG_LOGIC("Device is congested, rerouting tail");
+            return m_frr_policy.reroute(packet, dest, protocolNumber);
+        }
     }
 
     AddHeader(packet, protocolNumber);
     m_macTxTrace(packet);
-    
+
     NS_LOG_LOGIC("Device is not congested, sending packet normally");
     //
     // Stick a point to point protocol header on the packet in preparation for
     // shoving it out the door.
     //
-
 
     //
     // We should enqueue and dequeue the packet to hit the tracing hooks.

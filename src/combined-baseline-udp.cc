@@ -68,8 +68,6 @@ void setAlternateTarget(const NetDeviceContainer& devices,
 uint32_t segmentSize = 1024;
 uint32_t MTU_bytes = segmentSize + 54;
 
-
-
 // Topology parameters
 std::string bandwidth_primary = "2KBps";
 std::string bandwidth_access = "2.5KBps";
@@ -212,15 +210,13 @@ int main(int argc, char* argv[])
     p2p_traffic.SetQueue("ns3::DropTailQueue<Packet>");
     // Install devices and channels between nodes
 
-
     PointToPointHelper p2p_destination;
-  
-    p2p_destination.SetDeviceAttribute("DataRate", StringValue(bandwidth_destination));
+
+    p2p_destination.SetDeviceAttribute("DataRate",
+                                       StringValue(bandwidth_destination));
     p2p_destination.SetChannelAttribute("Delay", StringValue(delay_access));
     // Set the custom queue for the device
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
-   
-
 
     // PointToPointFRRHelper<FRRPolicy> p2p_congested_link;
     PointToPointHelper p2p_congested_link;

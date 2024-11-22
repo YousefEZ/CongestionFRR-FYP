@@ -64,7 +64,6 @@ void setAlternateTarget(const NetDeviceContainer& devices,
     getDevice<INDEX, FRRNetDevice>(devices)->addAlternateTarget(target);
 }
 
-
 // TCP parameters
 uint32_t segmentSize = 1024;
 uint32_t MTU_bytes = segmentSize + 54;
@@ -109,8 +108,8 @@ int main(int argc, char* argv[])
     Packet::EnablePrinting();
     int cong_threshold = 0;
     int number_of_tcp_senders = 1;
-    float udp_start = 15.0; 
-    int total_bytes = 100000; 
+    float udp_start = 15.0;
+    int total_bytes = 100000;
     std::string dir = "";
     CommandLine cmd;
     cmd.AddValue("bandwidth_primary", "Bandwidth primary", bandwidth_primary);
@@ -191,12 +190,13 @@ int main(int argc, char* argv[])
     // Install devices and channels between nodes
 
     PointToPointHelper p2p_destination;
-  
-    p2p_destination.SetDeviceAttribute("DataRate", StringValue(bandwidth_destination));
+
+    p2p_destination.SetDeviceAttribute("DataRate",
+                                       StringValue(bandwidth_destination));
     p2p_destination.SetChannelAttribute("Delay", StringValue(delay_access));
     // Set the custom queue for the device
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
-   
+
     PointToPointFRRHelper<FRRPolicy> p2p_congested_link;
     // PointToPointHelper p2p_congested_link;
     p2p_congested_link.SetDeviceAttribute("DataRate",
@@ -301,8 +301,9 @@ int main(int argc, char* argv[])
     for (int i = 0; i < number_of_tcp_senders; i++) {
         BulkSendHelper tcp_source("ns3::TcpSocketFactory",
                                   InetSocketAddress(receiver_addr, tcp_port));
-        tcp_source.SetAttribute("MaxBytes",
-                                UintegerValue(total_bytes)); // 0 for unlimited data
+        tcp_source.SetAttribute(
+            "MaxBytes",
+            UintegerValue(total_bytes)); // 0 for unlimited data
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
@@ -336,7 +337,7 @@ int main(int argc, char* argv[])
         devices_2_3, getDevice<1, ns3::PointToPointNetDevice>(devices_4_3));
 
     // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
-    p2p_traffic.EnablePcapAll(dir); 
+    p2p_traffic.EnablePcapAll(dir);
     p2p_destination.EnablePcapAll(dir);
     p2p_congestion.EnablePcapAll(dir);
     p2p_congested_link.EnablePcapAll(dir);

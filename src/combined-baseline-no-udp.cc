@@ -182,13 +182,12 @@ int main(int argc, char* argv[])
     p2p_alternate.SetQueue("ns3::DropTailQueue<Packet>");
 
     PointToPointHelper p2p_destination;
-  
-    p2p_destination.SetDeviceAttribute("DataRate", StringValue(bandwidth_destination));
+
+    p2p_destination.SetDeviceAttribute("DataRate",
+                                       StringValue(bandwidth_destination));
     p2p_destination.SetChannelAttribute("Delay", StringValue(delay_access));
     // Set the custom queue for the device
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
-   
-
 
     std::list<NetDeviceContainer> tcp_senders;
 
@@ -277,7 +276,7 @@ int main(int argc, char* argv[])
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
-        //p2p_traffic.EnablePcap(dir, tcp_devices.Get(i)->GetId(), 1);
+        // p2p_traffic.EnablePcap(dir, tcp_devices.Get(i)->GetId(), 1);
 
         tcp_apps.push_back(tcp_source.Install(tcp_devices.Get(i)));
         tcp_apps.back().Start(Seconds(0.0));

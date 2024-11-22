@@ -29,7 +29,6 @@ using SimulationQueue = FRRQueue<CongestionPolicy>;
 using FRRNetDevice = PointToPointFRRNetDevice<FRRPolicy>;
 using FRRChannel = PointToPointFRRChannel<FRRPolicy>;
 
-
 NS_OBJECT_ENSURE_REGISTERED(SimulationQueue);
 NS_OBJECT_ENSURE_REGISTERED(FRRChannel);
 NS_OBJECT_ENSURE_REGISTERED(FRRNetDevice);
@@ -53,7 +52,6 @@ void setAlternateTarget(const NetDeviceContainer& devices,
 {
     getDevice<INDEX, FRRNetDevice>(devices)->addAlternateTarget(target);
 }
-
 
 // TCP parameters
 uint32_t segmentSize = 1024;
@@ -177,12 +175,13 @@ int main(int argc, char* argv[])
     // Install devices and channels between nodes
 
     PointToPointHelper p2p_destination;
-  
-    p2p_destination.SetDeviceAttribute("DataRate", StringValue(bandwidth_destination));
+
+    p2p_destination.SetDeviceAttribute("DataRate",
+                                       StringValue(bandwidth_destination));
     p2p_destination.SetChannelAttribute("Delay", StringValue(delay_access));
     // Set the custom queue for the device
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
-   
+
     PointToPointFRRHelper<FRRPolicy> p2p_congested_link;
     // PointToPointHelper p2p_congested_link;
     p2p_congested_link.SetDeviceAttribute("DataRate",
@@ -322,7 +321,7 @@ int main(int argc, char* argv[])
         devices_2_3, getDevice<1, ns3::PointToPointNetDevice>(devices_4_3));
 
     // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
-    p2p_traffic.EnablePcapAll(dir); 
+    p2p_traffic.EnablePcapAll(dir);
     p2p_destination.EnablePcapAll(dir);
     p2p_congestion.EnablePcapAll(dir);
     p2p_congested_link.EnablePcapAll(dir);

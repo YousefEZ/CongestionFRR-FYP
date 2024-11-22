@@ -41,8 +41,6 @@ class FRRQueue : public FRRQueueBase
     virtual Ptr<Packet> Dequeue() override;
     virtual Ptr<Packet> Remove(void) override;
     virtual Ptr<const Packet> Peek() const override;
-    
-    
 
   public:
     static int s_uid;
