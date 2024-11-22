@@ -8,6 +8,11 @@ from tests.utils import FastReroutingUDPCommand
 fast_rerouting_command = FastReroutingUDPCommand(seed=1, policy_threshold=50)
 
 
+def check_not_empty(pcap_file):
+    packets = rdpcap(pcap_file)
+    assert len(packets) > 0
+
+
 def check_out_of_order(pcap_file):
     packets = rdpcap(pcap_file)
     tcp_streams = {}  # Dictionary to store TCP streams by their unique 4-tuple (src, dst, sport, dport)
@@ -45,9 +50,9 @@ def check_out_of_order(pcap_file):
 
 
 @hypothesis.given(
-    bandwidth_access=hypothesis.strategies.integers(min_value=1, max_value=100),
-    bandwidth_udp_access=hypothesis.strategies.integers(min_value=1, max_value=100),
-    delay=hypothesis.strategies.integers(min_value=10, max_value=100),
+    bandwidth_access=hypothesis.strategies.integers(min_value=1, max_value=50),
+    bandwidth_udp_access=hypothesis.strategies.integers(min_value=1, max_value=50),
+    delay=hypothesis.strategies.integers(min_value=10, max_value=50),
 )
 @hypothesis.settings(deadline=None, max_examples=15)
 def test_rerouting_head(bandwidth_access, bandwidth_udp_access, delay):
@@ -55,7 +60,7 @@ def test_rerouting_head(bandwidth_access, bandwidth_udp_access, delay):
     fast_rerouting_command(
         dir=dir,
         bandwidth_access=f"{bandwidth_access}KBps",
-        bandwidth_primary=f"{bandwidth_access + bandwidth_udp_access - 1}KBps",
+        bandwidth_primary=f"{(bandwidth_access + bandwidth_udp_access)// 2}KBps",
         bandwidth_udp_access=f"{bandwidth_udp_access}KBps",
         bandwidth_alternate="1000KBps",
         delay_primary=f"{delay}ms",
@@ -65,3 +70,4 @@ def test_rerouting_head(bandwidth_access, bandwidth_udp_access, delay):
         tcp_bytes=bandwidth_access * 10_000 * 15,
     )
     check_out_of_order(f"{dir}-Receiver-1.pcap")
+    check_not_empty(f"{dir}-Router01-3.pcap")
