@@ -221,16 +221,17 @@ int main(int argc, char* argv[])
     }
 
     NetDeviceContainer devices_2_3;
-    std::shared_ptr<PointToPointFRRHelper<FRRPolicy>> p2p_congested_link; 
+    std::shared_ptr<PointToPointFRRHelper<FRRPolicy>> p2p_congested_link;
     std::shared_ptr<PointToPointHelper> p2p_congested_link_no_frr;
 
     if (enable_rerouting) {
-        p2p_congested_link = std::make_shared<PointToPointFRRHelper<FRRPolicy>>();
+        p2p_congested_link =
+            std::make_shared<PointToPointFRRHelper<FRRPolicy>>();
         // PointToPointHelper p2p_congested_link;
         p2p_congested_link->SetDeviceAttribute("DataRate",
-                                              StringValue(bandwidth_primary));
+                                               StringValue(bandwidth_primary));
         p2p_congested_link->SetChannelAttribute("Delay",
-                                               StringValue(delay_bottleneck));
+                                                StringValue(delay_bottleneck));
         p2p_congested_link->SetQueue(SimulationQueue::getQueueString());
         // p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
 
@@ -238,14 +239,15 @@ int main(int argc, char* argv[])
         p2p_congested_link->EnablePcapAll(dir);
     } else {
         p2p_congested_link_no_frr = std::make_shared<PointToPointHelper>();
-        p2p_congested_link_no_frr->SetDeviceAttribute("DataRate",
-                                              StringValue(bandwidth_primary));
-        p2p_congested_link_no_frr->SetChannelAttribute("Delay",
-                                               StringValue(delay_bottleneck));
+        p2p_congested_link_no_frr->SetDeviceAttribute(
+            "DataRate", StringValue(bandwidth_primary));
+        p2p_congested_link_no_frr->SetChannelAttribute(
+            "Delay", StringValue(delay_bottleneck));
         // p2p_congested_link_no_frr.SetQueue(SimulationQueue::getQueueString());
         p2p_congested_link_no_frr->SetQueue("ns3::DropTailQueue<Packet>");
 
-        devices_2_3 = p2p_congested_link_no_frr->Install(nodes.Get(1), nodes.Get(2));
+        devices_2_3 =
+            p2p_congested_link_no_frr->Install(nodes.Get(1), nodes.Get(2));
         p2p_congested_link_no_frr->EnablePcapAll(dir);
     }
 
@@ -303,14 +305,14 @@ int main(int argc, char* argv[])
     if (enable_udp) {
         udp_source = std::make_shared<OnOffHelper>(
             "ns3::UdpSocketFactory",
-            InetSocketAddress(receiver_addr, udp_port));   
+            InetSocketAddress(receiver_addr, udp_port));
         udp_source->SetAttribute(
             "OnTime", StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
         udp_source->SetAttribute(
             "OffTime",
             StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
         udp_source->SetAttribute("DataRate",
-                                DataRateValue(DataRate(bandwidth_udp_access)));
+                                 DataRateValue(DataRate(bandwidth_udp_access)));
         udp_source->SetAttribute("PacketSize", UintegerValue(1024));
 
         udp_app = std::make_shared<ApplicationContainer>(
@@ -366,7 +368,7 @@ int main(int argc, char* argv[])
             devices_2_3, getDevice<0, ns3::PointToPointNetDevice>(devices_2_4));
         setAlternateTarget<1>(
             devices_2_3, getDevice<1, ns3::PointToPointNetDevice>(devices_4_3));
-    } 
+    }
 
     // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
     p2p_traffic.EnablePcapAll(dir);
