@@ -138,7 +138,7 @@ int main(int argc, char* argv[])
     cmd.AddValue("run", "run number", run);
 
     RngSeedManager::SetSeed(seed);
-    RngSeedManager::SetRun(run);      // Set the run number (changes the stream)
+    RngSeedManager::SetRun(run); // Set the run number (changes the stream)
     Random::seed(seed);
     cmd.Parse(argc, argv);
 
@@ -310,14 +310,16 @@ int main(int argc, char* argv[])
         udp_source = std::make_shared<OnOffHelper>(
             "ns3::UdpSocketFactory",
             InetSocketAddress(receiver_addr, udp_port));
-        Ptr<NormalRandomVariable> on_time = CreateObject<NormalRandomVariable>(); 
+        Ptr<NormalRandomVariable> on_time =
+            CreateObject<NormalRandomVariable>();
         on_time->SetAttribute("Mean", DoubleValue(3.0));
         on_time->SetAttribute("Variance", DoubleValue(1.0));
         on_time->SetAttribute("Bound", DoubleValue(4.0));
-        Ptr<NormalRandomVariable> off_time = CreateObject<NormalRandomVariable>();
+        Ptr<NormalRandomVariable> off_time =
+            CreateObject<NormalRandomVariable>();
         off_time->SetAttribute("Mean", DoubleValue(3.0));
         off_time->SetAttribute("Variance", DoubleValue(1.0));
-        off_time->SetAttribute("Bound", DoubleValue(4.0)); 
+        off_time->SetAttribute("Bound", DoubleValue(4.0));
 
         udp_source->SetAttribute("OnTime", PointerValue(on_time));
         udp_source->SetAttribute("OffTime", PointerValue(off_time));
