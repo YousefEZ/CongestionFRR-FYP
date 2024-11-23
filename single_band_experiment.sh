@@ -8,11 +8,16 @@ one_band_experiment()
   local dir="traces/$test_variable/$test_value/$policy_threshold"
   local seed="434324" 
   mkdir -p "$dir/frr/$seed/1"
+  mkdir -p "$dir/frr-no-udp/$seed/1"
   mkdir -p "$dir/baseline-udp/$seed/1"
   mkdir -p "$dir/baseline-no-udp/$seed/1"
 
-  NS_LOG="FRRQueue=info|prefix_time" ./ns3 run "scratch/combined-frr.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/frr/$seed/1/ --seed=$seed" 2> $dir/frr/$seed/1/debug.log
-  NS_LOG="" ./ns3 run "scratch/combined-baseline-udp.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/baseline-udp/$seed/1/ --seed=$seed"
+  NS_LOG="FRRQueue=info|prefix_time" ./ns3 run "scratch/simulation.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/frr/$seed/1/ --seed=$seed --enable-rerouting --enable-udp" 2> $dir/frr/$seed/1/debug.log
+  NS_LOG="FRRQueue=info|prefix_time" ./ns3 run "scratch/simulation.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/frr-no-udp/$seed/1/ --seed=$seed --enable-rerouting" 2> $dir/frr/$seed/1/debug.log
+  NS_LOG="" ./ns3 run "scratch/simulation.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/baseline-udp/$seed/1/ --seed=$seed --enable-udp" 
+  NS_LOG="" ./ns3 run "scratch/simulation.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/baseline-no-udp/$seed/1/ --seed=$seed"
+  #NS_LOG="FRRQueue=info|prefix_time" ./ns3 run "scratch/combined-frr.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/frr/$seed/1/ --seed=$seed" 2> $dir/frr/$seed/1/debug.log
+  #NS_LOG="" ./ns3 run "scratch/combined-baseline-udp.cc --$test_variable=$test_value --tcp_senders=1 --policy_threshold=$policy_threshold --dir=$dir/baseline-udp/$seed/1/ --seed=$seed"
   #NS_LOG="" ./ns3 run "scratch/combined-baseline-no-udp.cc --$test_variable=$test_value --tcp_senders=1 --dir=$dir/baseline-no-udp/$seed/1/ --seed=$seed"
 }
 

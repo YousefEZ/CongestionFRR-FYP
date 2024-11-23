@@ -7,6 +7,7 @@
 #include "ns3/applications-module.h"
 #include "ns3/log.h"
 #include "ns3/traffic-control-module.h"
+#include "ns3/packet.h"
 
 #include "../libs/frr_queue.h"
 #include "../libs/dummy_congestion_policy.h"
@@ -20,7 +21,6 @@
 using namespace ns3;
 using Random = effolkronium::random_static;
 uint32_t seed = 1;
-
 using CongestionPolicy = BasicCongestionPolicy;
 // using CongestionPolicy = RandomCongestionPolicy<100>;
 using FRRPolicy = LFAPolicy;
@@ -102,37 +102,16 @@ void SetupTCPConfig()
     Config::SetDefault("ns3::TcpSocketBase::MinRto", TimeValue(Seconds(1.0)));
 }
 
-void CalculateExpectedPackets(uint32_t tcp_max_bytes, DataRate udp_data_rate)
-{
-    DataRate bandwidth_primary_dr(bandwidth_primary);
-    DataRate bandwidth_access_dr(bandwidth_access);
-    Time bottleneck_delay_t(delay_bottleneck);
-    Time access_delay_t(delay_access);
-
-    // Serialization delay ~2ms
-    Time serialization_delay_t(((1024 + 54) * 8) /
-                               (std::min(bandwidth_primary_dr.GetBitRate(),
-                                         bandwidth_access_dr.GetBitRate())));
-
-    double total_delay_seconds = (2.0 * access_delay_t.GetSeconds() +
-                                  2.0 * bottleneck_delay_t.GetSeconds() +
-                                  serialization_delay_t.GetSeconds());
-    uint32_t max_bottleneck_tcp_bytes =
-        static_cast<uint32_t>(std::min(bandwidth_access_dr.GetBitRate(),
-                                       bandwidth_primary_dr.GetBitRate()) /
-                              8.0 * total_delay_seconds);
-
-    uint32_t expected_tcp_packets =
-        std::ceil(max_bottleneck_tcp_bytes / (1024 + 54));
-    std::cout << "Expected TCP packets in queue: " << expected_tcp_packets
-              << std::endl;
-}
-
 // NS_LOG_COMPONENT_DEFINE("CongestionFastReRoute");
 int main(int argc, char* argv[])
 {
+    Packet::EnablePrinting();
     int cong_threshold = 0;
     int number_of_tcp_senders = 1;
+    float udp_start = 15.0;
+    int total_bytes = 100000;
+    bool enable_rerouting = false;
+    bool enable_udp = false;
     std::string dir = "";
     CommandLine cmd;
     cmd.AddValue("bandwidth_primary", "Bandwidth primary", bandwidth_primary);
@@ -144,11 +123,16 @@ int main(int argc, char* argv[])
     cmd.AddValue("delay_alternate", "Delay Alternate", delay_alternate);
     cmd.AddValue("bandwidth_alternate", "Bandwidth Alternate",
                  bandwidth_alternate);
+    cmd.AddValue("tcp_senders", "Number of TCP Senders", number_of_tcp_senders);
+    cmd.AddValue("tcp_bytes", "Amount of TCP bytes", total_bytes);
+    cmd.AddValue("udp_start", "UDP start time", udp_start);
     cmd.AddValue("policy_threshold", "Congestion policy threshold",
                  cong_threshold);
-    cmd.AddValue("tcp_senders", "Number of TCP Senders", number_of_tcp_senders);
     cmd.AddValue("dir", "Traces directory", dir);
     cmd.AddValue("seed", "The random seed", seed);
+    cmd.AddValue("enable-rerouting", "enable fast rerouting on congestion",
+                 enable_rerouting);
+    cmd.AddValue("enable-udp", "enable udp traffic to be sent", enable_udp);
 
     RngSeedManager::SetSeed(seed);
     Random::seed(seed);
@@ -156,7 +140,7 @@ int main(int argc, char* argv[])
 
     BasicCongestionPolicy::usage_percentage = cong_threshold;
 
-    // LogComponentEnable("FRRQueue", LOG_LEVEL_LOGIC);
+    // LogComponentEnable("FRRQueue", LOG_LEVEL_ERROR);
     LogComponentEnableAll(LOG_LEVEL_ERROR);
     /*
      *  +----------+      +-----------+
@@ -183,7 +167,7 @@ int main(int argc, char* argv[])
      *           |          |
      *          5+----------+
      */
-    // Topology setup
+    // Topology Setup
     NS_LOG_INFO("Creating Topology");
     NodeContainer nodes;
     NodeContainer tcp_devices;
@@ -218,15 +202,6 @@ int main(int argc, char* argv[])
     // Set the custom queue for the device
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
 
-    // PointToPointFRRHelper<FRRPolicy> p2p_congested_link;
-    PointToPointHelper p2p_congested_link;
-    p2p_congested_link.SetDeviceAttribute("DataRate",
-                                          StringValue(bandwidth_primary));
-    p2p_congested_link.SetChannelAttribute("Delay",
-                                           StringValue(delay_bottleneck));
-    // p2p_congested_link.SetQueue(SimulationQueue::getQueueString());
-    p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
-
     Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize",
                        StringValue("10p"));
     Config::SetDefault(SimulationQueue::getQueueString() + "::MaxSize",
@@ -245,8 +220,37 @@ int main(int argc, char* argv[])
             p2p_traffic.Install(tcp_devices.Get(i), nodes.Get(1)));
     }
 
-    NetDeviceContainer devices_2_3 =
-        p2p_congested_link.Install(nodes.Get(1), nodes.Get(2));
+    NetDeviceContainer devices_2_3;
+    std::shared_ptr<PointToPointFRRHelper<FRRPolicy>> p2p_congested_link;
+    std::shared_ptr<PointToPointHelper> p2p_congested_link_no_frr;
+
+    if (enable_rerouting) {
+        p2p_congested_link =
+            std::make_shared<PointToPointFRRHelper<FRRPolicy>>();
+        // PointToPointHelper p2p_congested_link;
+        p2p_congested_link->SetDeviceAttribute("DataRate",
+                                               StringValue(bandwidth_primary));
+        p2p_congested_link->SetChannelAttribute("Delay",
+                                                StringValue(delay_bottleneck));
+        p2p_congested_link->SetQueue(SimulationQueue::getQueueString());
+        // p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
+
+        devices_2_3 = p2p_congested_link->Install(nodes.Get(1), nodes.Get(2));
+        p2p_congested_link->EnablePcapAll(dir);
+    } else {
+        p2p_congested_link_no_frr = std::make_shared<PointToPointHelper>();
+        p2p_congested_link_no_frr->SetDeviceAttribute(
+            "DataRate", StringValue(bandwidth_primary));
+        p2p_congested_link_no_frr->SetChannelAttribute(
+            "Delay", StringValue(delay_bottleneck));
+        // p2p_congested_link_no_frr.SetQueue(SimulationQueue::getQueueString());
+        p2p_congested_link_no_frr->SetQueue("ns3::DropTailQueue<Packet>");
+
+        devices_2_3 =
+            p2p_congested_link_no_frr->Install(nodes.Get(1), nodes.Get(2));
+        p2p_congested_link_no_frr->EnablePcapAll(dir);
+    }
+
     NetDeviceContainer devices_2_4 =
         p2p_alternate.Install(nodes.Get(1), nodes.Get(3));
     NetDeviceContainer devices_4_3 =
@@ -288,25 +292,34 @@ int main(int argc, char* argv[])
     Ipv4InterfaceContainer interfaces_3_5 = address.Assign(devices_3_5);
     address.NewNetwork();
 
+    Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+
     // Receiver address
     Ipv4Address receiver_addr = interfaces_3_5.GetAddress(1);
-    Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+
     // UDP Congestion traffic setup
+
     uint16_t udp_port = 50001;
-    OnOffHelper udp_source("ns3::UdpSocketFactory",
-                           InetSocketAddress(receiver_addr, udp_port));
-    udp_source.SetAttribute(
-        "OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    udp_source.SetAttribute(
-        "OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    udp_source.SetAttribute("DataRate",
-                            DataRateValue(DataRate(bandwidth_udp_access)));
-    udp_source.SetAttribute("PacketSize", UintegerValue(1024));
+    std::shared_ptr<OnOffHelper> udp_source;
+    std::shared_ptr<ApplicationContainer> udp_app;
+    if (enable_udp) {
+        udp_source = std::make_shared<OnOffHelper>(
+            "ns3::UdpSocketFactory",
+            InetSocketAddress(receiver_addr, udp_port));
+        udp_source->SetAttribute(
+            "OnTime", StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
+        udp_source->SetAttribute(
+            "OffTime",
+            StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
+        udp_source->SetAttribute("DataRate",
+                                 DataRateValue(DataRate(bandwidth_udp_access)));
+        udp_source->SetAttribute("PacketSize", UintegerValue(1024));
 
-    ApplicationContainer udp_app = udp_source.Install(nodes.Get(0));
-    udp_app.Start(Seconds(15.0));
-    udp_app.Stop(Seconds(300.0));
-
+        udp_app = std::make_shared<ApplicationContainer>(
+            udp_source->Install(nodes.Get(0)));
+        udp_app->Start(Seconds(udp_start));
+        udp_app->Stop(Seconds(300.0));
+    }
     DataRate b_access(bandwidth_access);
     DataRate b_bottleneck(bandwidth_primary);
     Time d_access(delay_access);
@@ -316,13 +329,13 @@ int main(int argc, char* argv[])
     // TCP Setup
     SetupTCPConfig();
     uint16_t tcp_port = 50002;
-
     std::list<ApplicationContainer> tcp_apps;
     for (int i = 0; i < number_of_tcp_senders; i++) {
         BulkSendHelper tcp_source("ns3::TcpSocketFactory",
                                   InetSocketAddress(receiver_addr, tcp_port));
-        tcp_source.SetAttribute("MaxBytes",
-                                UintegerValue(100000)); // 0 for unlimited data
+        tcp_source.SetAttribute(
+            "MaxBytes",
+            UintegerValue(total_bytes)); // 0 for unlimited data
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
@@ -347,12 +360,20 @@ int main(int argc, char* argv[])
     udp_sink_app.Start(Seconds(0.0));
     udp_sink_app.Stop(Seconds(300.0));
 
-    p2p_traffic.EnablePcap(dir, devices_3_5.Get(1), true);
-    // p2p_traffic.EnablePcapAll(dir);
-    p2p_destination.EnablePcap(dir, devices_3_5.Get(1), true);
-    p2p_congestion.EnablePcapAll(dir);
+    // LFA Alternate Path setup
+    // Set up an alternate forwarding target, assuming you have an alternate
+    // path configured
+    if (enable_rerouting) {
+        setAlternateTarget<0>(
+            devices_2_3, getDevice<0, ns3::PointToPointNetDevice>(devices_2_4));
+        setAlternateTarget<1>(
+            devices_2_3, getDevice<1, ns3::PointToPointNetDevice>(devices_4_3));
+    }
 
-    // CalculateExpectedPackets(10000, DataRate("1.6Mbps"));
+    // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
+    p2p_traffic.EnablePcapAll(dir);
+    p2p_destination.EnablePcapAll(dir);
+    p2p_congestion.EnablePcapAll(dir);
 
     Simulator::Run();
     Simulator::Destroy();
