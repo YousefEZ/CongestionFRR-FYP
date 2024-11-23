@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "ns3/random-variable-stream.h"
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
@@ -112,6 +113,7 @@ int main(int argc, char* argv[])
     int total_bytes = 100000;
     bool enable_rerouting = false;
     bool enable_udp = false;
+    int run = 1;
     std::string dir = "";
     CommandLine cmd;
     cmd.AddValue("bandwidth_primary", "Bandwidth primary", bandwidth_primary);
@@ -133,8 +135,10 @@ int main(int argc, char* argv[])
     cmd.AddValue("enable-rerouting", "enable fast rerouting on congestion",
                  enable_rerouting);
     cmd.AddValue("enable-udp", "enable udp traffic to be sent", enable_udp);
+    cmd.AddValue("run", "run number", run);
 
     RngSeedManager::SetSeed(seed);
+    RngSeedManager::SetRun(run); // Set the run number (changes the stream)
     Random::seed(seed);
     cmd.Parse(argc, argv);
 
@@ -306,11 +310,20 @@ int main(int argc, char* argv[])
         udp_source = std::make_shared<OnOffHelper>(
             "ns3::UdpSocketFactory",
             InetSocketAddress(receiver_addr, udp_port));
-        udp_source->SetAttribute(
-            "OnTime", StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
-        udp_source->SetAttribute(
-            "OffTime",
-            StringValue("ns3::ConstantRandomVariable[Constant=0.5]"));
+        Ptr<NormalRandomVariable> on_time =
+            CreateObject<NormalRandomVariable>();
+        on_time->SetAttribute("Mean", DoubleValue(3.0));
+        on_time->SetAttribute("Variance", DoubleValue(1.0));
+        on_time->SetAttribute("Bound", DoubleValue(4.0));
+        Ptr<NormalRandomVariable> off_time =
+            CreateObject<NormalRandomVariable>();
+        off_time->SetAttribute("Mean", DoubleValue(3.0));
+        off_time->SetAttribute("Variance", DoubleValue(1.0));
+        off_time->SetAttribute("Bound", DoubleValue(4.0));
+
+        udp_source->SetAttribute("OnTime", PointerValue(on_time));
+        udp_source->SetAttribute("OffTime", PointerValue(off_time));
+
         udp_source->SetAttribute("DataRate",
                                  DataRateValue(DataRate(bandwidth_udp_access)));
         udp_source->SetAttribute("PacketSize", UintegerValue(1024));
