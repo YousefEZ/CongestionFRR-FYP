@@ -12,7 +12,7 @@ class Style(TypedDict):
 
 class Customisation(TypedDict):
     mode: NotRequired[str]
-    markers: NotRequired[dict[str, Style]]
+    style: NotRequired[dict[str, Style]]
     title: NotRequired[str]
 
 
@@ -28,31 +28,32 @@ def _sort_plots(plots: list[Plot]) -> list[Plot]:
 def plot_flow_completion_time(
     results: dict[str, list[Plot]],
     target: Optional[str] = None,
-    labels: Customisation = Customisation(),
+    customisation: Customisation = Customisation(),
 ) -> None:
     figure, axes = plt.subplots(figsize=(10, 6))
 
     for result_type, unsorted_plots in results.items():
         plots = _sort_plots(unsorted_plots)
-        style = labels.get("markers", {}).get(result_type, {})
-        axes.plot(
-            [plot.variable for plot in plots],
-            [plot.time for plot in plots],
-            label=result_type,
-            **style,
-        )
+        style: Optional[Style] = customisation.get("style", {}).get(result_type)
+        if style:
+            axes.plot(
+                [plot.variable for plot in plots],
+                [plot.time for plot in plots],
+                label=result_type,
+                **style,
+            )
+        else:
+            axes.plot(
+                [plot.variable for plot in plots],
+                [plot.time for plot in plots],
+                label=result_type,
+            )
 
     axes.set_ylabel("Flow Complete Time in Seconds")
-    axes.set_xlabel(labels.get("mode", ""))
-    axes.set_title(labels.get("title", ""))
+    axes.set_xlabel(customisation.get("mode", ""))
+    axes.set_title(customisation.get("title", ""))
     axes.legend()
 
-    figure.legend(
-        results.keys(),
-        loc="upper left",
-        fontsize="large",
-        title="Legend",
-    )
     figure.subplots_adjust(left=0.2)
 
     if target:
