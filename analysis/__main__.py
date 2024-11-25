@@ -102,15 +102,17 @@ def discover_options(directory: str) -> list[Options]:
 @click.command()
 @click.option("--directory", "-d", help="Path to the directory", required=True)
 @click.option(
-    "--options",
+    "--option",
     "-o",
+    "options",
     multiple=True,
     help="Options to plot, if not set will discover",
     default=[],
 )
 @click.option(
-    "--seeds",
+    "--seed",
     "-s",
+    "seeds",
     multiple=True,
     help="Seed to plot, if not set will discover",
     default=[],
