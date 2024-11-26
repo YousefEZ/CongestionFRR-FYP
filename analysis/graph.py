@@ -29,6 +29,7 @@ def plot_flow_completion_time(
     results: dict[str, list[Plot]],
     target: Optional[str] = None,
     customisation: Customisation = Customisation(),
+    standard_deviation: Optional[dict[str, list[Plot]]] = None,
 ) -> None:
     figure, axes = plt.subplots(figsize=(10, 6))
 
@@ -47,6 +48,21 @@ def plot_flow_completion_time(
                 [plot.variable for plot in plots],
                 [plot.time for plot in plots],
                 label=result_type,
+            )
+
+        if standard_deviation:
+            standard_deviation_plots = _sort_plots(standard_deviation[result_type])
+            axes.fill_between(
+                [plot.variable for plot in standard_deviation_plots],
+                [
+                    plot.time - sd_plot.time
+                    for plot, sd_plot in zip(plots, standard_deviation_plots)
+                ],
+                [
+                    plot.time + sd_plot.time
+                    for plot, sd_plot in zip(plots, standard_deviation_plots)
+                ],
+                alpha=0.2,
             )
 
     axes.set_ylabel("Flow Complete Time in Seconds")
