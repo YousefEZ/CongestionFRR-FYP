@@ -141,8 +141,8 @@ int main(int argc, char* argv[])
 
     RngSeedManager::SetSeed(seed);
     RngSeedManager::SetRun(run); // Set the run number (changes the stream)
-    //Random::seed(seed);
-    
+    // Random::seed(seed);
+
     BasicCongestionPolicy::usage_percentage = cong_threshold;
 
     // LogComponentEnable("FRRQueue", LOG_LEVEL_ERROR);
