@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "congestionfrr"
+version = "0.1.0"
+description = ""
+authors = ["YousefEZ <45167695+YousefEZ@users.noreply.github.com>"]
+readme = "README.md"
+packages = [
+    { include = "analysis" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+scapy = "^2.6.1"
+rich = "^13.9.4"
+click = "^8.1.7"
+matplotlib = "^3.9.2"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+isort = "^5.13.2"
+mypy = "^1.13.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

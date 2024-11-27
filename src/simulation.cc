@@ -21,7 +21,7 @@
 
 using namespace ns3;
 using Random = effolkronium::random_static;
-uint32_t seed = 1;
+uint32_t seed = 23643;
 using CongestionPolicy = BasicCongestionPolicy;
 // using CongestionPolicy = RandomCongestionPolicy<100>;
 using FRRPolicy = LFAPolicy;
@@ -137,10 +137,11 @@ int main(int argc, char* argv[])
     cmd.AddValue("enable-udp", "enable udp traffic to be sent", enable_udp);
     cmd.AddValue("run", "run number", run);
 
+    cmd.Parse(argc, argv);
+
     RngSeedManager::SetSeed(seed);
     RngSeedManager::SetRun(run); // Set the run number (changes the stream)
-    Random::seed(seed);
-    cmd.Parse(argc, argv);
+    // Random::seed(seed);
 
     BasicCongestionPolicy::usage_percentage = cong_threshold;
 
@@ -312,14 +313,14 @@ int main(int argc, char* argv[])
             InetSocketAddress(receiver_addr, udp_port));
         Ptr<NormalRandomVariable> on_time =
             CreateObject<NormalRandomVariable>();
-        on_time->SetAttribute("Mean", DoubleValue(3.0));
+        on_time->SetAttribute("Mean", DoubleValue(2.0));
         on_time->SetAttribute("Variance", DoubleValue(1.0));
-        on_time->SetAttribute("Bound", DoubleValue(4.0));
+        on_time->SetAttribute("Bound", DoubleValue(1.0));
         Ptr<NormalRandomVariable> off_time =
             CreateObject<NormalRandomVariable>();
-        off_time->SetAttribute("Mean", DoubleValue(3.0));
+        off_time->SetAttribute("Mean", DoubleValue(2.0));
         off_time->SetAttribute("Variance", DoubleValue(1.0));
-        off_time->SetAttribute("Bound", DoubleValue(4.0));
+        off_time->SetAttribute("Bound", DoubleValue(1.0));
 
         udp_source->SetAttribute("OnTime", PointerValue(on_time));
         udp_source->SetAttribute("OffTime", PointerValue(off_time));
