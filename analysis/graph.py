@@ -1,7 +1,7 @@
 from typing import NamedTuple, NotRequired, Optional, TypedDict
 import matplotlib.pyplot as plt
 
-__all__ = "Customisation", "Plot", "plot_flow_completion_time"
+__all__ = "Customisation", "Plot", "plot"
 
 
 class Style(TypedDict):
@@ -25,7 +25,7 @@ def _sort_plots(plots: list[Plot]) -> list[Plot]:
     return sorted(plots, key=lambda x: x.variable)
 
 
-def plot_flow_completion_time(
+def plot(
     results: dict[str, list[Plot]],
     target: Optional[str] = None,
     customisation: Customisation = Customisation(),
