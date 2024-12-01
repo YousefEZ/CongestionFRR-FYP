@@ -15,7 +15,9 @@ def check_not_empty(pcap_file):
 
 def check_out_of_order(pcap_file):
     packets = rdpcap(pcap_file)
-    tcp_streams = {}  # Dictionary to store TCP streams by their unique 4-tuple (src, dst, sport, dport)
+    tcp_streams = (
+        {}
+    )  # Dictionary to store TCP streams by their unique 4-tuple (src, dst, sport, dport)
 
     for pkt in packets:
         if TCP in pkt:

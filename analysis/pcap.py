@@ -1,6 +1,9 @@
-from typing import NamedTuple
+from dataclasses import dataclass
+from functools import cached_property
+from typing import NamedTuple, Optional
+
 from scapy.all import rdpcap
-from scapy.layers.inet import TCP, IP, PacketList
+from scapy.layers.inet import IP, TCP, PacketList
 
 SOURCE = "10.1.2.1"
 DESTINATION = "10.1.6.2"
@@ -11,27 +14,41 @@ class Communication(NamedTuple):
     destination: str
 
 
-def get_IP(packets: PacketList) -> Communication:
-    return Communication(packets[0][IP].src, packets[0][IP].dst)
+TCP_FIN = 0x01
+TCP_ACK = 0x10
 
 
-def flow_completion_time(packets: PacketList, destination: str) -> float:
-    """Get the flow completion time of the TCP connection from the packets by checking the FIN-ACK flag."""
-    TCP_FIN = 0x01
-    TCP_ACK = 0x10
+@dataclass(frozen=True)
+class PcapFile:
+    filename: str
 
-    for pkt in packets:
-        if TCP in pkt:
-            sender, _ = pkt.getlayer("IP").src, pkt.getlayer("IP").dst
+    @cached_property
+    def packets(self) -> PacketList:
+        return rdpcap(self.filename)
+
+    @property
+    def first_addresses(self) -> Communication:
+        return Communication(self.packets[0][IP].src, self.packets[0][IP].dst)
+
+    def packets_from(self, source: str):
+        return list(
+            filter(lambda pkt: IP in pkt and pkt[IP].src == source, self.packets)
+        )
+
+    @cached_property
+    def addresses(self) -> list[str]:
+        return list(set([pkt[IP].src for pkt in self.packets]))
+
+    def number_of_packets_from_source(self, source: str) -> int:
+        return len(self.packets_from(source))
+
+    def flow_completion_time(self, source: str, destination: str) -> Optional[float]:
+        for packet in filter(lambda packet: TCP in packet, self.packets):
             if (
-                sender == destination
-                and pkt[TCP].flags & TCP_FIN
-                and pkt[TCP].flags & TCP_ACK
+                packet.getlayer("IP").src == source
+                and packet.getlayer("IP").dst == destination
+                and packet[TCP].flags & TCP_FIN
+                and packet[TCP].flags & TCP_ACK
             ):
-                return pkt.time
-    assert False, "Flow completion time not found"
-
-
-def get_flow_completion_time(filename: str, destination: str) -> float:
-    packets = rdpcap(filename)
-    return flow_completion_time(packets, destination)
+                return packet.time
+        return None
