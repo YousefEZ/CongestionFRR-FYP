@@ -35,3 +35,12 @@ def flow_completion_time(packets: PacketList, destination: str) -> float:
 def get_flow_completion_time(filename: str, destination: str) -> float:
     packets = rdpcap(filename)
     return flow_completion_time(packets, destination)
+
+
+def calculate_number_of_packets_from_source(filename: str, source: str) -> int:
+    packets = rdpcap(filename)
+    return len(list(filter(lambda pkt: TCP in pkt and pkt[IP].src == source, packets)))
+
+
+def calculate_packet_loss(packets_at_source: int, packets_at_destination: int) -> float:
+    return 1 - (packets_at_destination / packets_at_source)
