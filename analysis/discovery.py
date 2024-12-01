@@ -1,6 +1,13 @@
 import os
+from typing import Literal, NewType
 
-from . import scenario
+
+
+Devices = Literal[
+    "Receiver", "TrafficSender0", "Router01", "Router02", "Router03", "Receiver"
+]
+Seed = NewType("Seed", str)
+Options = NewType("Options", str)
 
 # expected directory structure
 # traces/"options"/"seed-run"/"variable"
@@ -9,9 +16,18 @@ from . import scenario
 # variable being the values such as 1.25Mbps, 2.5Mbps, 5Mbps, 10Mbps, 20Mbps, 40Mbps
 
 
-def discover_seeds(directory: str, option: str) -> list[scenario.Seed]:
-    return list(map(scenario.Seed, os.listdir(f"{directory}/{option}")))
+def discover_seeds(directory: str, option: str) -> list[Seed]:
+    return list(map(Seed, os.listdir(f"{directory}/{option}")))
 
 
-def discover_options(directory: str) -> list[scenario.Options]:
-    return list(map(scenario.Options, os.listdir(directory)))
+def discover_options(directory: str) -> list[Options]:
+    return list(map(Options, os.listdir(directory)))
+
+
+def discover_tcp_hosts(directory: str, option: str, seed: str) -> list[str]:
+    return list(
+        filter(
+            lambda device: "TrafficSender" in device,
+            os.listdir(f"{directory}/{option}/{seed}"),
+        )
+    )
