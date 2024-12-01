@@ -1,37 +1,19 @@
-from typing import Literal, NamedTuple, NewType
 from dataclasses import dataclass
 from functools import cached_property, lru_cache
 import os
 
 
 import rich.progress
-from scapy.all import rdpcap
 
+from analysis import discovery, statistic
 from analysis.graph import Plot
-from analysis.pcap import (
-    Communication,
-    calculate_number_of_packets_from_source,
-    calculate_packet_loss,
-    get_IP,
-    get_flow_completion_time,
-)
+from analysis.pcap import Communication, PcapFile
 
 
-Seed = NewType("Seed", str)
-Options = NewType("Options", str)
-
-Devices = Literal[
-    "Receiver", "TrafficSender", "Router01", "Router02", "Router03", "Receiver"
-]
-
-
-class PlotList(NamedTuple):
-    variable: float
-    times: list[float]
-
-
-def _variance(times: list[float], average: float) -> float:
-    return sum([(time - average) ** 2 for time in times]) / (len(times) - 1)
+def _calculate_packet_loss(
+    packets_at_source: int, packets_at_destination: int
+) -> float:
+    return 1 - (packets_at_destination / packets_at_source)
 
 
 def extract_numerical_value_from_string(string: str) -> float:
@@ -44,51 +26,58 @@ def extract_numerical_value_from_string(string: str) -> float:
 
 
 @dataclass(frozen=True)
-class Run:
+class VariableRun:
     directory: str
-    option: Options
-    seed: Seed
+    option: discovery.Options
+    seed: discovery.Seed
 
     @property
     def path(self) -> str:
         return f"{self.directory}/{self.option}/{self.seed}"
 
-    def pcap_filename(self, variable: str, device: Devices, link: int) -> str:
-        return f"{self.path}/{variable}/-{device}-{link}.pcap"
+    @lru_cache
+    def pcap(self, variable: str, device: discovery.Devices, link: int) -> PcapFile:
+        return PcapFile(f"{self.path}/{variable}/-{device}-{link}.pcap")
+
+    def packet_loss_at(self, variable: str) -> float:
+        addresses = self.ip_addresses(variable)
+        source_pcap = self.pcap(variable, "TrafficSender0", 1)
+        destination_pcap = self.pcap(variable, "Receiver", 1)
+        source_packets = source_pcap.number_of_packets_from_source(addresses.source)
+        destination_packets = destination_pcap.number_of_packets_from_source(
+            addresses.source
+        )
+        return _calculate_packet_loss(source_packets, destination_packets)
 
     @cached_property
-    def packet_loss(self) -> float:
-        loss = 0.0
-        for variable in self.variables:
-            source = self.ip_addresses(variable).source
-            source_packets = calculate_number_of_packets_from_source(
-                f"{self.directory}/{self.option}/{self.seed}/{variable}/-Sender-1.pcap",
-                source,
-            )
-            destination_packets = calculate_number_of_packets_from_source(
-                f"{self.directory}/{self.option}/{self.seed}/{variable}/-Receiver-1.pcap",
-                source,
-            )
-            loss += calculate_packet_loss(source_packets, destination_packets)
-        return loss / len(self.variables)
+    def packet_loss(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    extract_numerical_value_from_string(variable),
+                    self.packet_loss_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
 
     @cached_property
     def variables(self) -> list[str]:
-        return os.listdir(f"{self.directory}/{self.option}/{self.seed}")
+        return sorted(os.listdir(f"{self.directory}/{self.option}/{self.seed}"))
 
     @lru_cache
     def ip_addresses(self, variable: str) -> Communication:
-        path = self.pcap_filename(variable, "Receiver", 1)
-        return get_IP(rdpcap(path))
+        # TODO: replace with a method to handle multiple flows
+        return self.pcap(variable, "TrafficSender0", 1).first_addresses
 
     @cached_property
     def plots(self) -> list[Plot]:
         plots = []
         for variable in self.variables:
-            path = self.pcap_filename(variable, "Receiver", 1)
-            completion_time = get_flow_completion_time(
-                path, self.ip_addresses(variable).destination
-            )
+            pcap = self.pcap(variable, "Receiver", 1)
+            completion_time = pcap.flow_completion_time(*self.ip_addresses(variable))
+            assert completion_time
             plots.append(
                 Plot(extract_numerical_value_from_string(variable), completion_time)
             )
@@ -98,57 +87,41 @@ class Run:
 @dataclass(frozen=True)
 class Scenario:
     directory: str
-    option: Options
-    seeds: list[Seed]
+    option: discovery.Options
+    seeds: list[discovery.Seed]
 
     @cached_property
-    def runs(self) -> dict[Seed, Run]:
-        return {seed: Run(self.directory, self.option, seed) for seed in self.seeds}
-
-    @cached_property
-    def times(self) -> dict[Seed, list[Plot]]:
+    def runs(self) -> dict[discovery.Seed, VariableRun]:
         return {
-            seed: scenario.plots
-            for seed, scenario in rich.progress.track(
-                self.runs.items(),
-                description=f"Calculating Times for {self.option}",
-            )
+            seed: VariableRun(self.directory, self.option, seed) for seed in self.seeds
         }
 
     @cached_property
-    def variables(self):
-        return sorted([plot.variable for plot in list(self.times.values())[0]])
+    def times(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.plots
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    description=f"Calculating Times for {self.option}",
+                )
+            }
+        )
 
     @cached_property
-    def plots(self) -> list[PlotList]:
-        plot_lists = [PlotList(variable, []) for variable in self.variables]
-        for times in self.times.values():
-            for plot_list, seed_plot in zip(plot_lists, times):
-                plot_list.times.append(seed_plot.time)
-        return plot_lists
+    def packet_loss(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.packet_loss
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    description=f"Calculating Packet Loss for {self.option}",
+                )
+            }
+        )
 
-    @property
-    def average(self) -> list[Plot]:
-        assert self.times
-        return [
-            Plot(plot.variable, sum(plot.times) / len(plot.times))
-            for plot in self.plots
-        ]
-
-    @property
-    def variance(self) -> list[Plot]:
-        assert self.times
-
-        return [
-            Plot(plot.variable, _variance(plot.times, average.time))
-            for average, plot in zip(self.average, self.plots)
-        ]
-
-    @property
-    def standard_deviation(self) -> list[Plot]:
-        assert self.times
-
-        return [
-            Plot(plot.variable, variance.time**0.5)
-            for variance, plot in zip(self.variance, self.plots)
-        ]
+    @cached_property
+    def variables(self):
+        assert self.runs
+        runs = list(self.runs.values())
+        return runs[0].variables
