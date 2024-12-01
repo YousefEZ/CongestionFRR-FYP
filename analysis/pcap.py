@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing import NamedTuple, Optional
 from functools import cached_property
-
+from typing import NamedTuple, Optional
 
 from scapy.all import rdpcap
-from scapy.layers.inet import TCP, IP, PacketList
+from scapy.layers.inet import IP, TCP, PacketList
 
 SOURCE = "10.1.2.1"
 DESTINATION = "10.1.6.2"

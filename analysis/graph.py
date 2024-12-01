@@ -1,4 +1,5 @@
 from typing import NamedTuple, NotRequired, Optional, TypedDict
+
 import matplotlib.pyplot as plt
 
 __all__ = "Customisation", "Plot", "plot"
@@ -11,9 +12,13 @@ class Style(TypedDict):
 
 
 class Customisation(TypedDict):
-    mode: NotRequired[str]
-    style: NotRequired[dict[str, Style]]
-    title: NotRequired[str]
+    styles: NotRequired[dict[str, Style]]
+
+
+class Labels(TypedDict):
+    y_axis: str
+    x_axis: str
+    title: str
 
 
 class Plot(NamedTuple):
@@ -27,21 +32,22 @@ def _sort_plots(plots: list[Plot]) -> list[Plot]:
 
 def plot(
     results: dict[str, list[Plot]],
+    labels: Labels,
     target: Optional[str] = None,
-    customisation: Customisation = Customisation(),
+    styles: Optional[dict[str, Style]] = None,
     standard_deviation: Optional[dict[str, list[Plot]]] = None,
 ) -> None:
     figure, axes = plt.subplots(figsize=(10, 6))
 
     for result_type, unsorted_plots in results.items():
         plots = _sort_plots(unsorted_plots)
-        style: Optional[Style] = customisation.get("style", {}).get(result_type)
-        if style:
+        if styles:
+            style = styles.get(result_type, {})
             axes.plot(
                 [plot.variable for plot in plots],
                 [plot.time for plot in plots],
                 label=result_type,
-                **style,
+                **style.get(result_type, {}),
             )
         else:
             axes.plot(
@@ -65,9 +71,9 @@ def plot(
                 alpha=0.2,
             )
 
-    axes.set_ylabel("Flow Complete Time in Seconds")
-    axes.set_xlabel(customisation.get("mode", ""))
-    axes.set_title(customisation.get("title", ""))
+    axes.set_ylabel(labels["y_axis"])
+    axes.set_xlabel(labels["x_axis"])
+    axes.set_title(labels["title"])
     axes.legend()
 
     figure.subplots_adjust(left=0.2)

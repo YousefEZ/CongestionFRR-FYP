@@ -2,8 +2,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import NamedTuple
 
-from analysis import graph
-import discovery
+from analysis import discovery, graph
 
 
 class PlotList(NamedTuple):

@@ -1,7 +1,6 @@
 import os
 from typing import Literal, NewType
 
-
 Devices = Literal[
     "Receiver", "TrafficSender0", "Router01", "Router02", "Router03", "Receiver"
 ]
