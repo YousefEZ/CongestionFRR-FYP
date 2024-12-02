@@ -34,9 +34,14 @@
 # Traces
 traces/*
 
+# Analysis Cache 
+.analysis_cache/
+
 **/__pycache__
 
 # traces/*
+
+
 
 *.DS_Store
 *.idea/
