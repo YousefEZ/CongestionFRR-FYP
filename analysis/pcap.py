@@ -56,7 +56,6 @@ class PcapFile:
         return None
 
     def number_of_packet_reordering_from_source(self, source: str) -> int:
-        # filter is BFP (Berkeley Packet Filter) syntax
         packets = pyshark.FileCapture(
             self.filename,
             display_filter=f"ip.src=={source} and tcp.analysis.out_of_order",
