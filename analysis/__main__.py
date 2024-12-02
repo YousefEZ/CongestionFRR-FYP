@@ -127,8 +127,8 @@ def cdf(ctx: click.Context) -> None:
         stats["frr"].data,
         graph.Labels(
             x_axis=arguments.directory,
-            y_axis="Flow Completion Time (s)",
-            title=f"Flow Completion time for {arguments.directory}",
+            y_axis="Probability of Occurrence",
+            title=ctx.obj["title"],
         ),
         target=arguments.output,
     )
