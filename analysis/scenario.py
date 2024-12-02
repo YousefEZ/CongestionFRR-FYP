@@ -70,6 +70,23 @@ class VariableRun:
         )
 
     @cached_property
+    def packet_reordering(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.pcap(
+                        variable, "Receiver", 1
+                    ).number_of_packet_reordering_from_source(
+                        self.ip_addresses(variable).source
+                    ),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
     def variables(self) -> list[str]:
         return sorted(os.listdir(f"{self.directory}/{self.option}/{self.seed}"))
 
@@ -203,6 +220,20 @@ class Scenario:
                     self.runs.items(),
                     console=console,
                     description=f"Calculating Packet Loss for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("reordering")
+    def reordering(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.packet_reordering
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Packet Reordering for {self.option}",
                 )
             }
         )
