@@ -1,11 +1,11 @@
 import os
-from typing import Literal, NewType
+from typing import Literal, NewType, cast
 
 Devices = Literal[
     "Receiver", "TrafficSender0", "Router01", "Router02", "Router03", "Receiver"
 ]
 Seed = NewType("Seed", str)
-Options = NewType("Options", str)
+Options = Literal["baseline", "baseline-udp", "frr", "frr-udp"]
 
 # expected directory structure
 # traces/"options"/"seed-run"/"variable"
@@ -19,7 +19,7 @@ def discover_seeds(directory: str, option: str) -> list[Seed]:
 
 
 def discover_options(directory: str) -> list[Options]:
-    return list(map(Options, os.listdir(directory)))
+    return cast(list[Options], list(os.listdir(directory)))
 
 
 def discover_tcp_hosts(directory: str, option: str, seed: str) -> list[str]:
