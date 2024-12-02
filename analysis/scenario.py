@@ -1,12 +1,19 @@
+from __future__ import annotations
+
 import os
+import csv
 from dataclasses import dataclass
-from functools import cached_property, lru_cache
+from functools import cached_property, lru_cache, wraps
+from typing import Callable, Concatenate, Optional, ParamSpec
 
 import rich.progress
 
 from analysis import discovery, statistic
 from analysis.graph import Plot
 from analysis.pcap import Communication, PcapFile
+
+
+P = ParamSpec("P")
 
 
 def _calculate_packet_loss(
@@ -83,11 +90,63 @@ class VariableRun:
         return sorted(plots, key=lambda plot: plot.variable)
 
 
+def _cache_statistic(
+    property: str,
+) -> Callable[
+    [Callable[Concatenate[Scenario, P], statistic.Statistic]],
+    Callable[Concatenate[Scenario, P], statistic.Statistic],
+]:
+    def decorator(
+        func: Callable[Concatenate[Scenario, P], statistic.Statistic],
+    ) -> Callable[Concatenate[Scenario, P], statistic.Statistic]:
+        @wraps(func)
+        def wrapper(self, *args: P.args, **kwargs: P.kwargs) -> statistic.Statistic:
+            if stat := self._load_statistic(property):
+                return stat
+            stat = func(self, *args, **kwargs)
+            self._store_results(property, stat)
+            return stat
+
+        return wrapper
+
+    return decorator
+
+
 @dataclass(frozen=True)
 class Scenario:
     directory: str
     option: discovery.Options
     seeds: list[discovery.Seed]
+
+    @cached_property
+    def path(self) -> str:
+        return f"{self.directory}/{self.option}"
+
+    def _store_results(self, property: str, stat: statistic.Statistic) -> None:
+        with open(f"{self.path}/.{property}.csv", "w") as file:
+            writer = csv.DictWriter(file, fieldnames=["seed", "variable", "value"])
+            writer.writerow({"seed": "seed", "variable": "variable", "value": "value"})
+            for seed, plots in stat.data.items():
+                for plot in plots:
+                    writer.writerow(
+                        {"seed": seed, "variable": plot.variable, "value": plot.time}
+                    )
+
+    def _load_statistic(self, property: str) -> Optional[statistic.Statistic]:
+        if not os.path.exists(f"{self.path}/.{property}.csv"):
+            return None
+
+        with open(f"{self.path}/.{property}.csv", "r") as file:
+            reader = csv.DictReader(file)
+            data = {}
+            for row in reader:
+                seed = row["seed"]
+                variable = row["variable"]
+                value = row["value"]
+                if seed not in data:
+                    data[seed] = []
+                data[seed].append(Plot(float(variable), float(value)))
+            return statistic.Statistic(data)
 
     @cached_property
     def runs(self) -> dict[discovery.Seed, VariableRun]:
@@ -96,7 +155,10 @@ class Scenario:
         }
 
     @cached_property
+    @_cache_statistic("times")
     def times(self) -> statistic.Statistic:
+        if stat := self._load_statistic("times"):
+            return stat
         return statistic.Statistic(
             {
                 seed: scenario.plots
@@ -108,8 +170,11 @@ class Scenario:
         )
 
     @cached_property
+    @_cache_statistic("packet_loss")
     def packet_loss(self) -> statistic.Statistic:
-        return statistic.Statistic(
+        if stat := self._load_statistic("packet_loss"):
+            return stat
+        stat = statistic.Statistic(
             {
                 seed: scenario.packet_loss
                 for seed, scenario in rich.progress.track(
@@ -118,6 +183,8 @@ class Scenario:
                 )
             }
         )
+        self._store_results("packet_loss", stat)
+        return stat
 
     @cached_property
     def variables(self):
