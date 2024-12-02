@@ -152,12 +152,16 @@ class Scenario:
     def path(self) -> str:
         return f"{self.directory}/{self.option}"
 
+    @property
+    def _cache_dir(self) -> str:
+        return f".analysis_cache/{self.directory}/{self.option}"
+
     def _cache_file(self, property: str) -> str:
-        return f".analysis_cache/.{self.option}_{property}.json"
+        return f"{self._cache_dir}_{property}.json"
 
     def _store_results(self, property: str, stat: statistic.Statistic) -> None:
-        if not os.path.exists(".analysis_cache"):
-            os.makedirs(".analysis_cache")
+        if not os.path.exists(self._cache_dir):
+            os.makedirs(self._cache_dir)
 
         with open(self._cache_file(property), "w") as file:
             try:
