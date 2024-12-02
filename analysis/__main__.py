@@ -1,5 +1,4 @@
-import operator
-from typing import Callable, NamedTuple, Optional
+from typing import Callable, Literal, NamedTuple, Optional
 
 import click
 
@@ -14,33 +13,37 @@ def _analysis() -> None: ...
 def _graph() -> None: ...
 
 
+GraphTypes = Literal["plot", "cdf"]
+graph_types: list[GraphTypes] = ["plot", "cdf"]
+
+
 def generate_scenarios(
     directory: str,
     options: Optional[list[discovery.Options]],
     seeds: list[discovery.Seed],
-) -> list[scenario.Scenario]:
+) -> dict[discovery.Options, scenario.Scenario]:
     if not options:
         options = discovery.discover_options(directory)
     if not seeds:
         seeds = discovery.discover_seeds(directory, options[0])
-    return [scenario.Scenario(directory, option, seeds) for option in options]
+    return {option: scenario.Scenario(directory, option, seeds) for option in options}
 
 
 class OptionStatistics(NamedTuple):
-    average: dict[str, list[graph.Plot]]
-    standard_deviation: dict[str, list[graph.Plot]]
+    average: dict[discovery.Options, list[graph.Plot]]
+    standard_deviation: dict[discovery.Options, list[graph.Plot]]
 
 
 def get_option_statistics(
-    scenarios: list[scenario.Scenario],
+    scenarios: dict[discovery.Options, scenario.Scenario],
     statistic: Callable[[scenario.Scenario], statistic.Statistic],
 ) -> OptionStatistics:
-    average = {
-        str(scenario.option): statistic(scenario).average for scenario in scenarios
+    average: dict[discovery.Options, list[graph.Plot]] = {
+        option: statistic(scenario).average for option, scenario in scenarios.items()
     }
-    standard_deviation = {
-        str(scenario.option): statistic(scenario).standard_deviation
-        for scenario in scenarios
+    standard_deviation: dict[discovery.Options, list[graph.Plot]] = {
+        option: statistic(scenario).standard_deviation
+        for option, scenario in scenarios.items()
     }
     return OptionStatistics(average, standard_deviation)
 
@@ -64,27 +67,46 @@ def get_option_statistics(
     default=[],
 )
 @click.option("--output", "-o", help="Output file name")
+@click.option(
+    "--type", "-t", "_type", help="Graph Type", type=click.Choice(graph_types)
+)
 def _time(
     directory: str,
     options: list[discovery.Options],
     seeds: list[discovery.Seed],
     output: Optional[str],
+    _type: GraphTypes,
 ) -> None:
     scenarios = generate_scenarios(directory, options, seeds)
 
-    statistic_getter = operator.attrgetter("packet_loss")
+    def statistic_getter(scenario: scenario.Scenario) -> statistic.Statistic:
+        return scenario.times
+
     completion_time = get_option_statistics(scenarios, statistic_getter)
 
-    graph.plot(
-        completion_time.average,
-        graph.Labels(
-            x_axis=directory,
-            y_axis="Flow Completion Time (s)",
-            title=f"Flow Completion time for {directory}",
-        ),
-        target=output,
-        standard_deviation=completion_time.standard_deviation,
-    )
+    match _type:
+        case "plot":
+            graph.plot(
+                completion_time.average,
+                graph.Labels(
+                    x_axis=directory,
+                    y_axis="Flow Completion Time (s)",
+                    title=f"Flow Completion time for {directory}",
+                ),
+                target=output,
+                standard_deviation=completion_time.standard_deviation,
+            )
+        case "cdf":
+            graph.cdf(
+                scenarios["baseline-udp"].times.data,
+                scenarios["frr"].times.data,
+                graph.Labels(
+                    x_axis=directory,
+                    y_axis="Flow Completion Time (s)",
+                    title=f"Flow Completion time for {directory}",
+                ),
+                target=output,
+            )
 
 
 @_graph.command("loss")
@@ -113,7 +135,10 @@ def _loss(
     output: Optional[str],
 ) -> None:
     scenarios = generate_scenarios(directory, options, seeds)
-    statistic_getter = operator.attrgetter("packet_loss")
+
+    def statistic_getter(scenario: scenario.Scenario) -> statistic.Statistic:
+        return scenario.packet_loss
+
     packet_loss = get_option_statistics(scenarios, statistic_getter)
 
     graph.plot(
