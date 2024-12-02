@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import NamedTuple, NotRequired, Optional, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, NotRequired, Optional, TypedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
 from pydantic import BaseModel
 
+if TYPE_CHECKING:
+    from analysis import statistic
 from analysis.discovery import Options, Seed
 
 __all__ = "Customisation", "Plot", "plot"
@@ -44,45 +46,43 @@ def _sort_plots(plots: list[Plot]) -> list[Plot]:
 
 
 def plot(
-    results: dict[Options, list[Plot]],
+    stats: dict[Options, statistic.Statistic],
     labels: Labels,
     target: Optional[str] = None,
     styles: Optional[dict[str, Style]] = None,
-    standard_deviation: Optional[dict[Options, list[Plot]]] = None,
 ) -> None:
     figure, axes = plt.subplots(figsize=(10, 6))
 
-    for result_type, unsorted_plots in results.items():
-        plots = _sort_plots(unsorted_plots)
+    for option, statistic in stats.items():
+        plots = _sort_plots(statistic.average)
         if styles:
-            style = styles.get(result_type, {})
+            style = styles.get(option, {})
             axes.plot(
                 [plot.variable for plot in plots],
                 [plot.value for plot in plots],
-                label=result_type,
-                **style.get(result_type, {}),
+                label=option,
+                **style.get(option, {}),
             )
         else:
             axes.plot(
                 [plot.variable for plot in plots],
                 [plot.value for plot in plots],
-                label=result_type,
+                label=option,
             )
 
-        if standard_deviation:
-            standard_deviation_plots = _sort_plots(standard_deviation[result_type])
-            axes.fill_between(
-                [plot.variable for plot in standard_deviation_plots],
-                [
-                    plot.value - sd_plot.value
-                    for plot, sd_plot in zip(plots, standard_deviation_plots)
-                ],
-                [
-                    plot.value + sd_plot.value
-                    for plot, sd_plot in zip(plots, standard_deviation_plots)
-                ],
-                alpha=0.2,
-            )
+        standard_deviation_plots = _sort_plots(statistic.standard_deviation)
+        axes.fill_between(
+            [plot.variable for plot in standard_deviation_plots],
+            [
+                plot.value - sd_plot.value
+                for plot, sd_plot in zip(plots, standard_deviation_plots)
+            ],
+            [
+                plot.value + sd_plot.value
+                for plot, sd_plot in zip(plots, standard_deviation_plots)
+            ],
+            alpha=0.2,
+        )
 
     axes.set_ylabel(labels["y_axis"])
     axes.set_xlabel(labels["x_axis"])
