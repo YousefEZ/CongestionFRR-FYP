@@ -50,5 +50,5 @@ class PcapFile:
                 and packet[TCP].flags & TCP_FIN
                 and packet[TCP].flags & TCP_ACK
             ):
-                return packet.time
+                return float(packet.time)
         return None

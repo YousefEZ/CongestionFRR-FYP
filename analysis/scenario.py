@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
-from functools import cached_property, lru_cache
+from functools import cached_property, lru_cache, wraps
+from typing import Callable, Concatenate, Optional, ParamSpec
 
+import pydantic
 import rich.progress
 
 from analysis import discovery, statistic
 from analysis.graph import Plot
 from analysis.pcap import Communication, PcapFile
+
+
+P = ParamSpec("P")
+console = rich.console.Console()
 
 
 def _calculate_packet_loss(
@@ -53,8 +61,8 @@ class VariableRun:
         return sorted(
             (
                 Plot(
-                    extract_numerical_value_from_string(variable),
-                    self.packet_loss_at(variable),
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.packet_loss_at(variable),
                 )
                 for variable in self.variables
             ),
@@ -78,9 +86,43 @@ class VariableRun:
             completion_time = pcap.flow_completion_time(*self.ip_addresses(variable))
             assert completion_time
             plots.append(
-                Plot(extract_numerical_value_from_string(variable), completion_time)
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=completion_time,
+                )
             )
         return sorted(plots, key=lambda plot: plot.variable)
+
+
+def _cache_statistic(
+    property: str,
+) -> Callable[
+    [Callable[Concatenate[Scenario, P], statistic.Statistic]],
+    Callable[Concatenate[Scenario, P], statistic.Statistic],
+]:
+    def decorator(
+        func: Callable[Concatenate[Scenario, P], statistic.Statistic],
+    ) -> Callable[Concatenate[Scenario, P], statistic.Statistic]:
+        @wraps(func)
+        def wrapper(
+            self: Scenario, *args: P.args, **kwargs: P.kwargs
+        ) -> statistic.Statistic:
+            if stat := self._load_statistic(property):
+                console.print(
+                    f":heavy_check_mark:  [bold green]Loaded statistics[/bold green] for {self.option}'s {property} cache"
+                )
+                return stat
+            stat = func(self, *args, **kwargs)
+            self._store_results(property, stat)
+            return stat
+
+        return wrapper
+
+    return decorator
+
+
+class CachedData(pydantic.BaseModel):
+    data: dict[discovery.Seed, list[Plot]]
 
 
 @dataclass(frozen=True)
@@ -90,30 +132,76 @@ class Scenario:
     seeds: list[discovery.Seed]
 
     @cached_property
+    def path(self) -> str:
+        return f"{self.directory}/{self.option}"
+
+    def _cache_file(self, property: str) -> str:
+        return f".analysis_cache/.{self.option}_{property}.json"
+
+    def _store_results(self, property: str, stat: statistic.Statistic) -> None:
+        if not os.path.exists(".analysis_cache"):
+            os.makedirs(".analysis_cache")
+
+        with open(self._cache_file(property), "w") as file:
+            try:
+                file.write(
+                    CachedData.model_validate({"data": stat.data}).model_dump_json()
+                )
+            except Exception as e:
+                console.print(
+                    f":x:  [bold red]Failed[/bold red] to store results in cache for {property}: [bold red]{e}[/bold red]",
+                )
+
+    def _load_statistic(self, property: str) -> Optional[statistic.Statistic]:
+        filename = self._cache_file(property)
+
+        if not os.path.exists(filename):
+            return None
+
+        if os.path.getmtime(filename) < os.path.getmtime(self.path):
+            os.remove(filename)
+
+        with open(filename, "r") as cache_file:
+            try:
+                data = CachedData.model_validate_json(cache_file.read()).data
+            except Exception as e:
+                console.print(
+                    f":x:  [bold red]Failed[/bold red] to load results from cache for {property}: [bold red]{e}[/bold red]",
+                )
+                os.remove(filename)
+            else:
+                return statistic.Statistic(data)
+        return None
+
+    @cached_property
     def runs(self) -> dict[discovery.Seed, VariableRun]:
         return {
             seed: VariableRun(self.directory, self.option, seed) for seed in self.seeds
         }
 
     @cached_property
+    @_cache_statistic("times")
     def times(self) -> statistic.Statistic:
         return statistic.Statistic(
             {
                 seed: scenario.plots
                 for seed, scenario in rich.progress.track(
                     self.runs.items(),
+                    console=console,
                     description=f"Calculating Times for {self.option}",
                 )
             }
         )
 
     @cached_property
+    @_cache_statistic("packet_loss")
     def packet_loss(self) -> statistic.Statistic:
         return statistic.Statistic(
             {
                 seed: scenario.packet_loss
                 for seed, scenario in rich.progress.track(
                     self.runs.items(),
+                    console=console,
                     description=f"Calculating Packet Loss for {self.option}",
                 )
             }
