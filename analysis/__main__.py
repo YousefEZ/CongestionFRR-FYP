@@ -107,7 +107,17 @@ def _loss(ctx: click.Context) -> None:
     ctx.obj["title"] = "Packet Loss"
 
 
-@multi_command(_time, _loss, name="cdf")
+@click.group(name="reordering")
+@click.pass_context
+def _reordering(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.reordering for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Packet Reordering Amount"
+    ctx.obj["title"] = "Packet Reordering"
+
+
+@multi_command(_time, _loss, _reordering, name="cdf")
 @click.pass_context
 def cdf(ctx: click.Context) -> None:
     arguments = ctx.obj["arguments"]
@@ -124,14 +134,14 @@ def cdf(ctx: click.Context) -> None:
     )
 
 
-@multi_command(_time, _loss, name="plot")
+@multi_command(_time, _loss, _reordering, name="plot")
 @click.pass_context
 def plot(ctx: click.Context) -> None:
     arguments = ctx.obj["arguments"]
-    scenarios = ctx.obj["scenarios"]
+    stats = ctx.obj["statistics"]
 
     graph.plot(
-        scenarios,
+        stats,
         graph.Labels(
             x_axis=arguments.directory,
             y_axis=ctx.obj["property"],
@@ -143,6 +153,7 @@ def plot(ctx: click.Context) -> None:
 
 _graph.add_command(_loss)
 _graph.add_command(_time)
+_graph.add_command(_reordering)
 _analysis.add_command(_graph)
 
 if __name__ == "__main__":
