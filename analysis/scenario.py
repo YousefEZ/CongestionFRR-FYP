@@ -101,7 +101,9 @@ class VariableRun:
         for variable in self.variables:
             pcap = self.pcap(variable, "Receiver", 1)
             completion_time = pcap.flow_completion_time(*self.ip_addresses(variable))
-            assert completion_time
+            assert (
+                completion_time
+            ), f"Failed to calculate completion time for {variable}"
             plots.append(
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
@@ -126,7 +128,8 @@ def _cache_statistic(
         ) -> statistic.Statistic:
             if stat := self._load_statistic(property):
                 console.print(
-                    f":heavy_check_mark:  [bold green]Loaded statistics[/bold green] for {self.option}'s {property} cache"
+                    f":zap: [bold yellow]Loaded statistics[/bold yellow] for {self.option}'s {property} cache",
+                    emoji=True,
                 )
                 return stat
             stat = func(self, *args, **kwargs)
@@ -181,6 +184,7 @@ class Scenario:
 
         if os.path.getmtime(filename) < os.path.getmtime(self.path):
             os.remove(filename)
+            return None
 
         with open(filename, "r") as cache_file:
             try:
@@ -191,7 +195,13 @@ class Scenario:
                 )
                 os.remove(filename)
             else:
-                return statistic.Statistic(data)
+                if not set(self.seeds).issubset(set(data.keys())):
+                    return None  # Cache is outdated
+                elif set(self.seeds) == set(data.keys()):  # All seeds are present
+                    return statistic.Statistic(data)
+                return statistic.Statistic(
+                    {discovery.Seed(seed): data[seed] for seed in self.seeds}
+                )
         return None
 
     @cached_property
