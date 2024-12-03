@@ -28,6 +28,9 @@ class Statistic:
         plot_lists = [PlotList(variable, []) for variable in self.variables]
         for value in self.data.values():
             for plot_list, seed_plot in zip(plot_lists, value):
+                assert (
+                    plot_list.variable == seed_plot.variable
+                ), "Variables do not match"
                 plot_list.data.append(seed_plot.value)
         return plot_lists
 
@@ -42,7 +45,10 @@ class Statistic:
     @property
     def variance(self) -> list[graph.Plot]:
         assert self.data
-
+        if len(self.data) < 2:
+            return [
+                graph.Plot(variable=plot.variable, value=0.0) for plot in self.plots
+            ]
         return [
             graph.Plot(
                 variable=plot.variable, value=_variance(plot.data, average.value)
@@ -53,7 +59,6 @@ class Statistic:
     @property
     def standard_deviation(self) -> list[graph.Plot]:
         assert self.data
-
         return [
             graph.Plot(variable=plot.variable, value=variance.value**0.5)
             for variance, plot in zip(self.variance, self.plots)
