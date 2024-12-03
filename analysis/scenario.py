@@ -70,6 +70,23 @@ class VariableRun:
         )
 
     @cached_property
+    def packet_reordering(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.pcap(
+                        variable, "Receiver", 1
+                    ).number_of_packet_reordering_from_source(
+                        self.ip_addresses(variable).source
+                    ),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
     def variables(self) -> list[str]:
         return sorted(os.listdir(f"{self.directory}/{self.option}/{self.seed}"))
 
@@ -84,7 +101,9 @@ class VariableRun:
         for variable in self.variables:
             pcap = self.pcap(variable, "Receiver", 1)
             completion_time = pcap.flow_completion_time(*self.ip_addresses(variable))
-            assert completion_time
+            assert (
+                completion_time
+            ), f"Failed to calculate completion time for {variable}"
             plots.append(
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
@@ -109,7 +128,8 @@ def _cache_statistic(
         ) -> statistic.Statistic:
             if stat := self._load_statistic(property):
                 console.print(
-                    f":heavy_check_mark:  [bold green]Loaded statistics[/bold green] for {self.option}'s {property} cache"
+                    f":zap: [bold yellow]Loaded statistics[/bold yellow] for {self.option}'s {property} cache",
+                    emoji=True,
                 )
                 return stat
             stat = func(self, *args, **kwargs)
@@ -135,12 +155,16 @@ class Scenario:
     def path(self) -> str:
         return f"{self.directory}/{self.option}"
 
+    @property
+    def _cache_dir(self) -> str:
+        return f".analysis_cache/{self.directory}/{self.option}"
+
     def _cache_file(self, property: str) -> str:
-        return f".analysis_cache/.{self.option}_{property}.json"
+        return f"{self._cache_dir}_{property}.json"
 
     def _store_results(self, property: str, stat: statistic.Statistic) -> None:
-        if not os.path.exists(".analysis_cache"):
-            os.makedirs(".analysis_cache")
+        if not os.path.exists(self._cache_dir):
+            os.makedirs(self._cache_dir)
 
         with open(self._cache_file(property), "w") as file:
             try:
@@ -160,6 +184,7 @@ class Scenario:
 
         if os.path.getmtime(filename) < os.path.getmtime(self.path):
             os.remove(filename)
+            return None
 
         with open(filename, "r") as cache_file:
             try:
@@ -170,7 +195,13 @@ class Scenario:
                 )
                 os.remove(filename)
             else:
-                return statistic.Statistic(data)
+                if not set(self.seeds).issubset(set(data.keys())):
+                    return None  # Cache is outdated
+                elif set(self.seeds) == set(data.keys()):  # All seeds are present
+                    return statistic.Statistic(data)
+                return statistic.Statistic(
+                    {discovery.Seed(seed): data[seed] for seed in self.seeds}
+                )
         return None
 
     @cached_property
@@ -203,6 +234,20 @@ class Scenario:
                     self.runs.items(),
                     console=console,
                     description=f"Calculating Packet Loss for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("reordering")
+    def reordering(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.packet_reordering
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Packet Reordering for {self.option}",
                 )
             }
         )

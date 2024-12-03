@@ -1,20 +1,30 @@
-from typing import Callable, Literal, NamedTuple, Optional
+from dataclasses import dataclass
+from typing import Callable, Literal, Optional, ParamSpec, TypeVar
 
 import click
 
-from analysis import discovery, graph, scenario, statistic
+from analysis import discovery, graph, scenario
 
-
-@click.group(name="analysis")
-def _analysis() -> None: ...
-
-
-@click.group(name="graph")
-def _graph() -> None: ...
-
+P = ParamSpec("P")
+T = TypeVar("T")
 
 GraphTypes = Literal["plot", "cdf"]
 graph_types: list[GraphTypes] = ["plot", "cdf"]
+
+
+def multi_command(
+    *groups: click.Group, name: str
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def decorator(command: Callable[P, T]) -> Callable[P, T]:
+        for group in groups:
+
+            @group.command(name=name)
+            def _(*args: P.args, **kwargs: P.kwargs) -> T:
+                return command(*args, **kwargs)
+
+        return command
+
+    return decorator
 
 
 def generate_scenarios(
@@ -29,26 +39,19 @@ def generate_scenarios(
     return {option: scenario.Scenario(directory, option, seeds) for option in options}
 
 
-class OptionStatistics(NamedTuple):
-    average: dict[discovery.Options, list[graph.Plot]]
-    standard_deviation: dict[discovery.Options, list[graph.Plot]]
+@dataclass(frozen=True)
+class GraphArguments:
+    directory: str
+    options: list[discovery.Options]
+    seeds: list[discovery.Seed]
+    output: Optional[str]
 
 
-def get_option_statistics(
-    scenarios: dict[discovery.Options, scenario.Scenario],
-    statistic: Callable[[scenario.Scenario], statistic.Statistic],
-) -> OptionStatistics:
-    average: dict[discovery.Options, list[graph.Plot]] = {
-        option: statistic(scenario).average for option, scenario in scenarios.items()
-    }
-    standard_deviation: dict[discovery.Options, list[graph.Plot]] = {
-        option: statistic(scenario).standard_deviation
-        for option, scenario in scenarios.items()
-    }
-    return OptionStatistics(average, standard_deviation)
+@click.group(name="analysis")
+def _analysis() -> None: ...
 
 
-@_graph.command(name="time")
+@click.group(name="graph")
 @click.option("--directory", "-d", help="Path to the directory", required=True)
 @click.option(
     "--option",
@@ -67,92 +70,90 @@ def get_option_statistics(
     default=[],
 )
 @click.option("--output", "-o", help="Output file name")
-@click.option(
-    "--type", "-t", "_type", help="Graph Type", type=click.Choice(graph_types)
-)
-def _time(
-    directory: str,
-    options: list[discovery.Options],
-    seeds: list[discovery.Seed],
-    output: Optional[str],
-    _type: GraphTypes,
-) -> None:
-    scenarios = generate_scenarios(directory, options, seeds)
-
-    def statistic_getter(scenario: scenario.Scenario) -> statistic.Statistic:
-        return scenario.times
-
-    completion_time = get_option_statistics(scenarios, statistic_getter)
-
-    match _type:
-        case "plot":
-            graph.plot(
-                completion_time.average,
-                graph.Labels(
-                    x_axis=directory,
-                    y_axis="Flow Completion Time (s)",
-                    title=f"Flow Completion time for {directory}",
-                ),
-                target=output,
-                standard_deviation=completion_time.standard_deviation,
-            )
-        case "cdf":
-            graph.cdf(
-                scenarios["baseline-udp"].times.data,
-                scenarios["frr"].times.data,
-                graph.Labels(
-                    x_axis=directory,
-                    y_axis="Flow Completion Time (s)",
-                    title=f"Flow Completion time for {directory}",
-                ),
-                target=output,
-            )
-
-
-@_graph.command("loss")
-@click.option("--directory", "-d", help="Path to the directory", required=True)
-@click.option(
-    "--option",
-    "-o",
-    "options",
-    multiple=True,
-    help="Options to plot, if not set will discover",
-    default=[],
-)
-@click.option(
-    "--seed",
-    "-s",
-    "seeds",
-    multiple=True,
-    help="Seed to plot, if not set will discover",
-    default=[],
-)
-@click.option("--output", "-o", help="Output file name")
-def _loss(
+@click.pass_context
+def _graph(
+    ctx: click.Context,
     directory: str,
     options: list[discovery.Options],
     seeds: list[discovery.Seed],
     output: Optional[str],
 ) -> None:
-    scenarios = generate_scenarios(directory, options, seeds)
+    ctx.ensure_object(dict)
+    ctx.obj["arguments"] = GraphArguments(
+        directory=directory, options=options, seeds=seeds, output=output
+    )
 
-    def statistic_getter(scenario: scenario.Scenario) -> statistic.Statistic:
-        return scenario.packet_loss
+    ctx.obj["scenarios"] = generate_scenarios(directory, options, seeds)
 
-    packet_loss = get_option_statistics(scenarios, statistic_getter)
 
-    graph.plot(
-        packet_loss.average,
+@click.group(name="time")
+@click.pass_context
+def _time(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.times for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Flow Completion Time (s)"
+    ctx.obj["title"] = "Flow Completion time"
+
+
+@click.group(name="loss")
+@click.pass_context
+def _loss(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.packet_loss
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Packet Loss (%)"
+    ctx.obj["title"] = "Packet Loss"
+
+
+@click.group(name="reordering")
+@click.pass_context
+def _reordering(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.reordering for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Packet Reordering Amount"
+    ctx.obj["title"] = "Packet Reordering"
+
+
+@multi_command(_time, _loss, _reordering, name="cdf")
+@click.pass_context
+def cdf(ctx: click.Context) -> None:
+    arguments = ctx.obj["arguments"]
+    stats = ctx.obj["statistics"]
+    graph.cdf(
+        stats["baseline-udp"].data,
+        stats["frr"].data,
         graph.Labels(
-            x_axis=directory,
-            y_axis="Packet Loss (%)",
-            title=f"Packet Loss % for {directory}",
+            x_axis=arguments.directory,
+            y_axis="Probability of Occurrence",
+            title=ctx.obj["title"],
         ),
-        target=output,
-        standard_deviation=packet_loss.standard_deviation,
+        target=arguments.output,
     )
 
 
+@multi_command(_time, _loss, _reordering, name="plot")
+@click.pass_context
+def plot(ctx: click.Context) -> None:
+    arguments = ctx.obj["arguments"]
+    stats = ctx.obj["statistics"]
+
+    graph.plot(
+        stats,
+        graph.Labels(
+            x_axis=arguments.directory,
+            y_axis=ctx.obj["property"],
+            title=ctx.obj["title"],
+        ),
+        target=arguments.output,
+    )
+
+
+_graph.add_command(_loss)
+_graph.add_command(_time)
+_graph.add_command(_reordering)
 _analysis.add_command(_graph)
 
 if __name__ == "__main__":
