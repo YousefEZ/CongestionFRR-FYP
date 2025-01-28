@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Callable, Literal, Optional, ParamSpec, TypeVar
 
 import click
+import rich
+import rich.table
 
 from analysis import discovery, graph, scenario
 
@@ -28,15 +30,24 @@ def multi_command(
 
 
 def generate_scenarios(
+    *,
     directory: str,
     options: Optional[list[discovery.Options]],
     seeds: list[discovery.Seed],
+    variables: list[discovery.Variable],
 ) -> dict[discovery.Options, scenario.Scenario]:
     if not options:
         options = discovery.discover_options(directory)
     if not seeds:
         seeds = discovery.discover_seeds(directory, options[0])
-    return {option: scenario.Scenario(directory, option, seeds) for option in options}
+    if not variables:
+        variables = discovery.discover_variables(directory, options[0], seeds[0])
+    return {
+        option: scenario.Scenario(
+            directory=directory, option=option, seeds=seeds, variables=tuple(variables)
+        )
+        for option in options
+    }
 
 
 @dataclass(frozen=True)
@@ -44,6 +55,7 @@ class GraphArguments:
     directory: str
     options: list[discovery.Options]
     seeds: list[discovery.Seed]
+    variables: list[discovery.Variable]
     output: Optional[str]
 
 
@@ -55,7 +67,7 @@ def _analysis() -> None: ...
 @click.option("--directory", "-d", help="Path to the directory", required=True)
 @click.option(
     "--option",
-    "-o",
+    "-op",
     "options",
     multiple=True,
     help="Options to plot, if not set will discover",
@@ -69,21 +81,36 @@ def _analysis() -> None: ...
     help="Seed to plot, if not set will discover",
     default=[],
 )
+@click.option(
+    "--variable",
+    "-v",
+    "variables",
+    multiple=True,
+    help="variables to plot, if not set will discover",
+    default=[],
+)
 @click.option("--output", "-o", help="Output file name")
 @click.pass_context
 def _graph(
     ctx: click.Context,
     directory: str,
     options: list[discovery.Options],
+    variables: list[discovery.Variable],
     seeds: list[discovery.Seed],
     output: Optional[str],
 ) -> None:
     ctx.ensure_object(dict)
     ctx.obj["arguments"] = GraphArguments(
-        directory=directory, options=options, seeds=seeds, output=output
+        directory=directory,
+        options=options,
+        seeds=seeds,
+        variables=variables,
+        output=output,
     )
 
-    ctx.obj["scenarios"] = generate_scenarios(directory, options, seeds)
+    ctx.obj["scenarios"] = generate_scenarios(
+        directory=directory, options=options, seeds=seeds, variables=variables
+    )
 
 
 @click.group(name="time")
@@ -149,6 +176,46 @@ def plot(ctx: click.Context) -> None:
         ),
         target=arguments.output,
     )
+
+
+@multi_command(_time, _loss, _reordering, name="table")
+@click.pass_context
+def table(ctx: click.Context) -> None:
+    stats = ctx.obj["statistics"]
+    console = rich.console.Console()
+
+    for option, scenario in stats.items():
+        table = rich.table.Table(
+            title=option,
+            show_header=True,
+            header_style="bold",
+        )
+        table.add_column("Variable")
+        table.add_column("Average")
+        table.add_column("Minimum")
+        table.add_column("Maximum")
+        table.add_column("Standard Deviation")
+
+        averages = scenario.average
+        minimums = scenario.minimum
+        maximums = scenario.maximum
+        standard_deviations = scenario.standard_deviation
+
+        for variable, average, minimum, maximum, std_dev in zip(
+            tuple(avg.variable for avg in averages),
+            averages,
+            minimums,
+            maximums,
+            standard_deviations,
+        ):
+            table.add_row(
+                str(variable),
+                str(round(average.value, 2)),
+                str(round(minimum.value, 2)),
+                str(round(maximum.value, 2)),
+                str(round(std_dev.value, 2)),
+            )
+        console.print(table)
 
 
 _graph.add_command(_loss)

@@ -37,6 +37,7 @@ class VariableRun:
     directory: str
     option: discovery.Options
     seed: discovery.Seed
+    variables: tuple[discovery.Variable, ...]
 
     @property
     def path(self) -> str:
@@ -86,10 +87,6 @@ class VariableRun:
             key=lambda plot: plot.variable,
         )
 
-    @cached_property
-    def variables(self) -> list[str]:
-        return sorted(os.listdir(f"{self.directory}/{self.option}/{self.seed}"))
-
     @lru_cache
     def ip_addresses(self, variable: str) -> Communication:
         # TODO: replace with a method to handle multiple flows
@@ -101,9 +98,9 @@ class VariableRun:
         for variable in self.variables:
             pcap = self.pcap(variable, "Receiver", 1)
             completion_time = pcap.flow_completion_time(*self.ip_addresses(variable))
-            assert (
-                completion_time
-            ), f"Failed to calculate completion time for {variable}"
+            assert completion_time, (
+                f"Failed to calculate completion time for {variable}"
+            )
             plots.append(
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
@@ -145,11 +142,13 @@ class CachedData(pydantic.BaseModel):
     data: dict[discovery.Seed, list[Plot]]
 
 
+# TODO: simplify the storage of results mechanism, and allow for joining of multiple results
 @dataclass(frozen=True)
 class Scenario:
     directory: str
     option: discovery.Options
     seeds: list[discovery.Seed]
+    variables: tuple[discovery.Variable, ...]
 
     @cached_property
     def path(self) -> str:
@@ -197,17 +196,37 @@ class Scenario:
             else:
                 if not set(self.seeds).issubset(set(data.keys())):
                     return None  # Cache is outdated
-                elif set(self.seeds) == set(data.keys()):  # All seeds are present
-                    return statistic.Statistic(data)
+
+                numerical_variables = {
+                    extract_numerical_value_from_string(variable)
+                    for variable in self.variables
+                }
+                if any(
+                    not numerical_variables.issubset(
+                        {plot.variable for plot in data[seed]}
+                    )
+                    for seed in data
+                ):
+                    # missing variables
+                    return None
                 return statistic.Statistic(
-                    {discovery.Seed(seed): data[seed] for seed in self.seeds}
+                    {
+                        discovery.Seed(seed): [
+                            plot
+                            for plot in data[seed]
+                            if plot.variable in numerical_variables
+                        ]
+                        for seed in self.seeds
+                    }
                 )
+
         return None
 
     @cached_property
     def runs(self) -> dict[discovery.Seed, VariableRun]:
         return {
-            seed: VariableRun(self.directory, self.option, seed) for seed in self.seeds
+            seed: VariableRun(self.directory, self.option, seed, self.variables)
+            for seed in self.seeds
         }
 
     @cached_property
@@ -251,9 +270,3 @@ class Scenario:
                 )
             }
         )
-
-    @cached_property
-    def variables(self):
-        assert self.runs
-        runs = list(self.runs.values())
-        return runs[0].variables
