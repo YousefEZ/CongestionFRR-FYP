@@ -20,7 +20,7 @@ console = rich.console.Console()
 def _calculate_packet_loss(
     packets_at_source: int, packets_at_destination: int
 ) -> float:
-    return 1 - (packets_at_destination / packets_at_source)
+    return (1 - (packets_at_destination / packets_at_source)) * 100
 
 
 def extract_numerical_value_from_string(string: str) -> float:
@@ -47,6 +47,19 @@ class VariableRun:
     def pcap(self, variable: str, device: discovery.Devices, link: int) -> PcapFile:
         return PcapFile(f"{self.path}/{variable}/-{device}-{link}.pcap")
 
+    @property
+    def senders(self) -> dict[discovery.Variable, PcapFile]:
+        return {
+            variable: self.pcap(variable, "TrafficSender0", 1)
+            for variable in self.variables
+        }
+
+    @property
+    def receivers(self) -> dict[discovery.Variable, PcapFile]:
+        return {
+            variable: self.pcap(variable, "Receiver", 1) for variable in self.variables
+        }
+
     def packet_loss_at(self, variable: str) -> float:
         addresses = self.ip_addresses(variable)
         source_pcap = self.pcap(variable, "TrafficSender0", 1)
@@ -57,6 +70,70 @@ class VariableRun:
         )
         return _calculate_packet_loss(source_packets, destination_packets)
 
+    @lru_cache
+    def packets_sent_by_source(self, variable: str) -> int:
+        source_pcap = self.pcap(variable, "TrafficSender0", 1)
+        return source_pcap.number_of_packets_from_source(
+            self.ip_addresses(variable).source
+        )
+
+    def packets_lost_at(self, variable: str) -> int:
+        addresses = self.ip_addresses(variable)
+        destination_pcap = self.pcap(variable, "Receiver", 1)
+        destination_packets = destination_pcap.number_of_packets_from_source(
+            addresses.source
+        )
+        return self.packets_sent_by_source(variable) - destination_packets
+
+    def udp_packets_lost_at(self, variable: str) -> int:
+        sent = len(self.pcap(variable, "CongestionSender", 1).packets)
+        received = len(self.pcap(variable, "Receiver", 1).udp_packets)
+        return sent - received
+
+    def udp_packets_loss_at(self, variable: str) -> float:
+        sent = len(self.pcap(variable, "CongestionSender", 1).packets)
+        if sent == 0:
+            return 0.0
+        received = len(self.pcap(variable, "Receiver", 1).udp_packets)
+        return _calculate_packet_loss(sent, received)
+
+    @lru_cache
+    def packets_rerouted_at(self, variable: str) -> int:
+        addresses = self.ip_addresses(variable)
+        rerouted_pcap = self.pcap(variable, "Router03", 1)
+        return rerouted_pcap.number_of_packets_from_source(addresses.source)
+
+    def packets_rerouted_percentage_at(self, variable: str) -> float:
+        return (
+            self.packets_rerouted_at(variable) / self.packets_sent_by_source(variable)
+        ) * 100
+
+    @cached_property
+    def packet_rerouted(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.packets_rerouted_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def packet_rerouted_percentage(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.packets_rerouted_percentage_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
     @cached_property
     def packet_loss(self) -> list[Plot]:
         return sorted(
@@ -64,6 +141,45 @@ class VariableRun:
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
                     value=self.packet_loss_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def packets_lost(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.packets_lost_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def udp_lost(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.udp_packets_lost_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def udp_loss(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.udp_packets_loss_at(variable),
                 )
                 for variable in self.variables
             ),
@@ -244,6 +360,48 @@ class Scenario:
         )
 
     @cached_property
+    @_cache_statistic("packets_lost")
+    def packets_lost(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.packets_lost
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Packets Lost for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("udp_loss")
+    def udp_loss(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.udp_loss
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating UDP Lost for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("udp_lost")
+    def udp_lost(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.udp_lost
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating UDP Lost for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
     @_cache_statistic("packet_loss")
     def packet_loss(self) -> statistic.Statistic:
         return statistic.Statistic(
@@ -267,6 +425,34 @@ class Scenario:
                     self.runs.items(),
                     console=console,
                     description=f"Calculating Packet Reordering for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("rerouted")
+    def rerouted(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.packet_rerouted
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Packet Rerouting for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("rerouted_percentage")
+    def rerouted_percentage(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.packet_rerouted_percentage
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Packet Rerouting Percentage for {self.option}",
                 )
             }
         )

@@ -38,6 +38,7 @@ class SingleDupAckRetransmitPacketCapture(PacketCapture):
 @dataclass(frozen=True)
 class SingleDupAckRetransmitSackAnalyzer(PacketAnalyzer):
     file: PcapFile
+    name: str = "Single Dup Ack Fast Retransmit"
 
     def filter_packets(
         self, source: str, destination: str

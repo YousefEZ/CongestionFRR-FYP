@@ -43,6 +43,7 @@ class SpuriousRetransmissionAnalyzer(PacketAnalyzer):
 @dataclass(frozen=True)
 class FastRetransmissionAnalyzer(PacketAnalyzer):
     file: PcapFile
+    name: str = "Fast Retransmission"
 
     def filter_packets(
         self, source: str, destination: str
@@ -52,6 +53,5 @@ class FastRetransmissionAnalyzer(PacketAnalyzer):
             display_filter=f"ip.src=={source} and ip.dst=={destination} and tcp.analysis.retransmission",
         )
         packets = [self.file.packets[int(packet.number) - 1] for packet in file_capture]
-        print(packets)
         file_capture.close()
         return packets

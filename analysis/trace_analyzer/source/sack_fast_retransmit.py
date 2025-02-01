@@ -33,6 +33,7 @@ class FastRetransmitSackPacketCapture(PacketCapture):
 @dataclass(frozen=True)
 class FastRetransmitSackAnalyzer(PacketAnalyzer):
     file: PcapFile
+    name: str = "SACK Fast Retransmit"
 
     def filter_packets(
         self, source: str, destination: str

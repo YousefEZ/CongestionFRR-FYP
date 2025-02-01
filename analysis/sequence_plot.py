@@ -1,9 +1,14 @@
+from dataclasses import field
+import operator
 from typing import Callable
-from scapy.layers.inet import TCP
+
+from scapy.all import dataclass
 import scapy.packet
 
 from analysis.pcap import DESTINATION, SOURCE, PcapFile
 import plotly.graph_objects as go
+from analysis.trace_analyzer.analyzer import PacketAnalyzer
+from analysis.trace_analyzer.source.dropped_packets import DroppedPacketsAnalyzer
 from analysis.trace_analyzer.source.regular_fast_retransmit import (
     FastRetransmissionAnalyzer,
 )
@@ -14,106 +19,105 @@ from analysis.trace_analyzer.source.spurious_sack_fast_transmit import (
     SingleDupAckRetransmitSackAnalyzer,
 )
 
-PREMADE_COLORS = [
+LINE_COLOURS = [
     "red",
+    "cyan",
+    "lime",
+    "orange",
+]
+
+PREMADE_COLORS = [
     "blue",
     "green",
-    "orange",
     "purple",
-    "cyan",
-    "magenta",
-    "lime",
     "brown",
     "pink",
 ]
 
+SYMBOLS = [
+    "square",
+    "diamond",
+    "cross",
+    "x",
+    "triangle-up",
+    "star",
+]
 
-def assign_colour(assigned_colours: dict[str, str], condition: str) -> str:
-    for colour in PREMADE_COLORS:
-        if colour not in assigned_colours.values():
-            assigned_colours[condition] = colour
-            return colour
+
+@dataclass(frozen=True)
+class Packets:
+    origin: str
+    packets: list[scapy.packet.Packet]
+    extract: Callable[[scapy.packet.Packet], int]
+    conditions: dict[str, list[scapy.packet.Packet]] = field(default_factory=dict)
+
+
+def build_conditions(
+    *analyzers: PacketAnalyzer, source: str, destination: str
+) -> dict[str, list[scapy.packet.Packet]]:
+    conditions = {}
+    filtered_packets = set()
+    for analyzer in analyzers:
+        packets = analyzer.filter_packets(source, destination)
+        conditions[analyzer.name] = [
+            packet
+            for packet in packets
+            if (packet.seq, packet.ack, float(packet.time)) not in filtered_packets
+        ]
+        filtered_packets.update(
+            (packet.seq, packet.ack, float(packet.time)) for packet in packets
+        )
+    return conditions
+
+
+def assign_from(assignments: dict[str, str], condition: str, values: list[str]) -> str:
+    for value in values:
+        if value not in assignments.values():
+            assignments[condition] = value
+            return value
     assert False, "Too many conditions to plot, add more colours"
 
 
-def get_highlighted_styles(
-    data: list[scapy.packet.Packet],
-    conditions: dict[str, list[scapy.packet.Packet]],
-    assigned_colours: dict[str, str],
-    default_color: str,
-) -> tuple[list[str], list[int]]:
-    """
-    Generates lists of styles (colors and sizes) based on conditions for each packet.
-    there is priority to what condition is matched first, dicts are ordered based on entry
-    so higher precendece conditions should be placed first.
-
-    Args:
-        data (list[tuple[float, int, object]]): Sequence data.
-        conditions (dict[str, callable]): Conditions to check.
-
-    Returns:
-        tuple[list[str], list[int]]: Marker colors and sizes.
-    """
-    colors = []
-    sizes = []
-
-    for condition in conditions:
-        assign_colour(assigned_colours, condition)
-    for packet in data:
-        for condition, matched_set in conditions.items():
-            if packet in matched_set:
-                colors.append(assigned_colours[condition])
-                sizes.append(10)
-                break
-        else:
-            colors.append(default_color)
-            sizes.append(4)
-    return colors, sizes
-
-
 def plot_sequence_plot(
-    data: list[scapy.packet.Packet],
-    classified: dict[str, list[scapy.packet.Packet]],
-    origin: str,
-    packet_repr_func: Callable[[scapy.packet.Packet], int],
+    packets: Packets,
     fig: go.Figure,
     assigned_colours: dict[str, str],
+    assigned_symbols: dict[str, str],
 ) -> None:
-    origin_colour = assign_colour(assigned_colours, origin)
-    colours, sizes = get_highlighted_styles(
-        data, classified, assigned_colours, origin_colour
-    )
+    origin_colour = assign_from(assigned_colours, packets.origin, values=LINE_COLOURS)
+    for condition in packets.conditions:
+        assign_from(assigned_colours, condition, values=PREMADE_COLORS)
+        assign_from(assigned_symbols, condition, values=SYMBOLS)
 
     fig.add_trace(
         go.Scatter(
-            x=[float(pkt.time) for pkt in data],
-            y=[packet_repr_func(pkt) for pkt in data],
+            x=[float(pkt.time) for pkt in packets.packets],
+            y=[packets.extract(pkt) for pkt in packets.packets],
             mode="lines+markers",
             line_shape="hv",  # Step plot style
-            name=origin,
+            name=packets.origin,
             line=dict(color=origin_colour),
-            marker=dict(color=colours, size=sizes),
+            marker=dict(color=origin_colour),
             hovertemplate="Time: %{x}<br>Seq: %{y}<extra></extra>",
         )
     )
-    for condition in classified:
+    for condition in packets.conditions:
         fig.add_trace(
             go.Scatter(
-                x=[None],
-                y=[None],
+                x=[float(pkt.time) for pkt in packets.conditions[condition]],
+                y=[packets.extract(pkt) for pkt in packets.conditions[condition]],
                 mode="markers",
-                marker=dict(color=assigned_colours[condition], size=10),
-                name=f"{origin}: {condition}",
+                marker=dict(
+                    color=assigned_colours[condition],
+                    symbol=assigned_symbols[condition],
+                    size=12,
+                ),
+                name=f"{packets.origin}: {condition}",
             )
         )
 
 
-def plot_sequence(
-    sender_data: list[scapy.packet.Packet],
-    receiver_data: list[scapy.packet.Packet],
-    sender_conditions: dict[str, list[scapy.packet.Packet]],
-    receiver_conditions: dict[str, list[scapy.packet.Packet]],
-) -> None:
+def plot_sequence(*packets_list: Packets) -> None:
     """
     Plots the sequence numbers for sender and receiver on a single graph with
     custom markers for packets matching specific conditions.
@@ -127,22 +131,9 @@ def plot_sequence(
 
     fig = go.Figure()
     assigned_colours: dict[str, str] = dict()
-    plot_sequence_plot(
-        sender_data,
-        sender_conditions,
-        "Sender",
-        lambda pkt: pkt[TCP].seq,
-        fig,
-        assigned_colours,
-    )
-    plot_sequence_plot(
-        receiver_data,
-        receiver_conditions,
-        "Receiver",
-        lambda pkt: pkt[TCP].ack,
-        fig,
-        assigned_colours,
-    )
+    assigned_symbols: dict[str, str] = dict()
+    for packets in packets_list:
+        plot_sequence_plot(packets, fig, assigned_colours, assigned_symbols)
 
     fig.update_layout(
         title="Interactive Stevens Step Sequence Plot",
@@ -165,29 +156,24 @@ if __name__ == "__main__":
         "traces/bandwidth_primary/baseline-udp/7438211/3.0Mbps/-Receiver-1.pcap"
     )
 
-    fast_sack_retransmit = FastRetransmitSackAnalyzer(sender).filter_packets(
-        SOURCE, DESTINATION
-    )
-
-    spurious_sack_fast_retransmit = SingleDupAckRetransmitSackAnalyzer(
-        sender
-    ).filter_packets(SOURCE, DESTINATION)
-
-    fast_retransmit = [
-        pkt
-        for pkt in FastRetransmissionAnalyzer(sender).filter_packets(
-            SOURCE, DESTINATION
-        )
-        if pkt not in fast_sack_retransmit
-    ]
-
-    plot_sequence(
+    sender_seq = Packets(
+        "Sender Seq",
         sender.packets_from(SOURCE),
-        receiver.packets_from(DESTINATION),
-        {
-            "Fast Sack Retransmit": fast_sack_retransmit,
-            "Single Dup Ack Retransmit": spurious_sack_fast_retransmit,
-            "Fast Retransmit": fast_retransmit,
-        },
-        dict(),
+        operator.attrgetter("seq"),
+        build_conditions(
+            SingleDupAckRetransmitSackAnalyzer(sender),
+            FastRetransmitSackAnalyzer(sender),
+            FastRetransmissionAnalyzer(sender),
+            DroppedPacketsAnalyzer(sender, receiver),
+            source=SOURCE,
+            destination=DESTINATION,
+        ),
     )
+
+    receiver_acks = Packets(
+        "Receiver Ack",
+        sender.packets_from(DESTINATION),
+        operator.attrgetter("ack"),
+    )
+
+    plot_sequence(sender_seq, receiver_acks)

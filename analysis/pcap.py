@@ -5,7 +5,7 @@ from typing import NamedTuple, Optional
 import pyshark
 import scapy.packet
 from scapy.all import rdpcap, PacketList
-from scapy.layers.inet import IP, TCP
+from scapy.layers.inet import IP, TCP, UDP
 
 SOURCE = "10.1.2.1"
 DESTINATION = "10.1.7.2"
@@ -34,6 +34,10 @@ class PcapFile:
     @cached_property
     def tcp_packets(self) -> list[scapy.packet.Packet]:
         return [pkt for pkt in self.packets if TCP in pkt]
+
+    @cached_property
+    def udp_packets(self) -> list[scapy.packet.Packet]:
+        return [pkt for pkt in self.packets if UDP in pkt]
 
     @property
     def first_addresses(self) -> Communication:
@@ -68,5 +72,7 @@ class PcapFile:
             display_filter=f"ip.src=={source} and tcp.analysis.out_of_order",
         )
         packets = list(file_capture)
+        print(self.filename, len(packets))
+
         file_capture.close()
         return len(packets)
