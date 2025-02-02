@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <sys/stat.h>
- 
+
 #include "ns3/random-variable-stream.h"
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
@@ -44,7 +44,6 @@ std::ofstream fPlotCwnd;
 
 std::unordered_map<uint32_t, std::ofstream> fQueueSizes;
 
-
 void toggleCongestion(Ptr<SimulationQueue> queue)
 {
     ;
@@ -60,10 +59,10 @@ NS_OBJECT_ENSURE_REGISTERED(SimulationQueue);
 NS_OBJECT_ENSURE_REGISTERED(FRRChannel);
 NS_OBJECT_ENSURE_REGISTERED(FRRNetDevice);
 
-void RtoExpiredCallback(SequenceNumber32 seq) {
+void RtoExpiredCallback(SequenceNumber32 seq)
+{
     std::cout << "RTO expired for packet sequence: " << seq << std::endl;
 }
-
 
 template <int INDEX, typename DEVICE_TYPE>
 Ptr<DEVICE_TYPE> getDevice(const NetDeviceContainer& devices)
@@ -84,39 +83,41 @@ void setAlternateTarget(const NetDeviceContainer& devices,
 {
     getDevice<INDEX, FRRNetDevice>(devices)->addAlternateTarget(target);
 }
- 
+
 // Function to trace change in cwnd at n0
 static void CwndChange(uint32_t oldCwnd, uint32_t newCwnd)
 {
-    fPlotCwnd << Simulator::Now().GetSeconds() << " " << newCwnd / segmentSize << std::endl;
+    fPlotCwnd << Simulator::Now().GetSeconds() << " " << newCwnd / segmentSize
+              << std::endl;
 }
- 
 
 // Function to trace change in cwnd at n0
 static void RTOChange(Time oldRTO, Time newRTO)
 {
-    fPlotCwnd << Simulator::Now().GetSeconds() << " Old RTO=" << oldRTO.As(Time::S) << ", newRTO=" << newRTO.As(Time::S) << std::endl;
-
+    fPlotCwnd << Simulator::Now().GetSeconds()
+              << " Old RTO=" << oldRTO.As(Time::S)
+              << ", newRTO=" << newRTO.As(Time::S) << std::endl;
 }
 
-
 // Trace Function for cwnd
-void TraceCwnd(uint32_t node, uint32_t cwndWindow, Callback<void, uint32_t, uint32_t> CwndTrace)
+void TraceCwnd(uint32_t node, uint32_t cwndWindow,
+               Callback<void, uint32_t, uint32_t> CwndTrace)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(node) +
                                       "/$ns3::TcpL4Protocol/SocketList/" +
-                                      std::to_string(cwndWindow) + "/CongestionWindow",
+                                      std::to_string(cwndWindow) +
+                                      "/CongestionWindow",
                                   CwndTrace);
 }
 
-void TraceRTO(uint32_t node, uint32_t cwndWindow, Callback<void, Time, Time> RTOTrace)
+void TraceRTO(uint32_t node, uint32_t cwndWindow,
+              Callback<void, Time, Time> RTOTrace)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(node) +
                                       "/$ns3::TcpL4Protocol/SocketList/" +
                                       std::to_string(cwndWindow) + "/RTO",
                                   RTOTrace);
 }
-
 
 // Topology parameters
 std::string bandwidth_primary = "4Mbps";
@@ -144,13 +145,16 @@ void SetupTCPConfig()
     // Initial congestion window
     // Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(1));
     // Set delayed ack count
-    // Config::SetDefault("ns3::TcpSocket::DelAckTimeout", TimeValue(Time("1ms")));
+    // Config::SetDefault("ns3::TcpSocket::DelAckTimeout",
+    // TimeValue(Time("1ms")));
     Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
     // Set segment size of packet
-    Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(segmentSize));
+    Config::SetDefault("ns3::TcpSocket::SegmentSize",
+                       UintegerValue(segmentSize));
     // Enable/disable SACKs (disabled)
     Config::SetDefault("ns3::TcpSocketBase::Sack", BooleanValue(true));
-    //Config::SetDefault("ns3::TcpSocketBase::MinRto", TimeValue(Seconds(1.0)));
+    // Config::SetDefault("ns3::TcpSocketBase::MinRto",
+    // TimeValue(Seconds(1.0)));
 }
 
 // NS_LOG_COMPONENT_DEFINE("CongestionFastReRoute");
@@ -243,7 +247,7 @@ int main(int argc, char* argv[])
     Names::Add("Router02", nodes.Get(2));
     Names::Add("Router03", nodes.Get(3));
     Names::Add("Receiver", nodes.Get(4));
-    Names::Add("Middle", nodes.Get(5)); 
+    Names::Add("Middle", nodes.Get(5));
     InternetStackHelper stack;
     stack.Install(nodes);
     stack.Install(tcp_devices);
@@ -260,7 +264,8 @@ int main(int argc, char* argv[])
 
     p2p_destination.SetDeviceAttribute("DataRate",
                                        StringValue(bandwidth_destination));
-    p2p_destination.SetChannelAttribute("Delay", StringValue(delay_destination));
+    p2p_destination.SetChannelAttribute("Delay",
+                                        StringValue(delay_destination));
     // Set the custom queue for the device
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
 
@@ -280,7 +285,6 @@ int main(int argc, char* argv[])
     for (int i = 0; i < number_of_tcp_senders; i++) {
         tcp_senders.push_back(
             p2p_destination.Install(tcp_devices.Get(i), nodes.Get(5)));
-    
     }
 
     NetDeviceContainer devices_2_3;
@@ -321,7 +325,6 @@ int main(int argc, char* argv[])
     NetDeviceContainer devices_3_5 =
         p2p_destination.Install(nodes.Get(2), nodes.Get(4));
 
-
     NetDeviceContainer devices_M_2 =
         p2p_traffic.Install(nodes.Get(5), nodes.Get(1));
 
@@ -361,7 +364,6 @@ int main(int argc, char* argv[])
 
     Ipv4InterfaceContainer interfaces_3_5 = address.Assign(devices_3_5);
     address.NewNetwork();
-    
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
@@ -387,7 +389,7 @@ int main(int argc, char* argv[])
         off_time->SetAttribute("Mean", DoubleValue(0.3));
         off_time->SetAttribute("Variance", DoubleValue(0.1));
         off_time->SetAttribute("Bound", DoubleValue(0.1));
-        
+
         udp_source->SetAttribute("OnTime", PointerValue(on_time));
         udp_source->SetAttribute("OffTime", PointerValue(off_time));
 
@@ -419,9 +421,12 @@ int main(int argc, char* argv[])
         tcp_source.SetAttribute("SendSize",
                                 UintegerValue(1024)); // Packet size in bytes
 
-
-        Simulator::Schedule(Seconds(0.001), &TraceCwnd, tcp_devices.Get(i)->GetId(), 0, MakeCallback(&CwndChange));
-        Simulator::Schedule(Seconds(0.01), &TraceRTO, tcp_devices.Get(i)->GetId(), 0, MakeCallback(&RTOChange));
+        Simulator::Schedule(Seconds(0.001), &TraceCwnd,
+                            tcp_devices.Get(i)->GetId(), 0,
+                            MakeCallback(&CwndChange));
+        Simulator::Schedule(Seconds(0.01), &TraceRTO,
+                            tcp_devices.Get(i)->GetId(), 0,
+                            MakeCallback(&RTOChange));
 
         p2p_traffic.EnablePcap(dir, tcp_devices.Get(i)->GetId(), 1);
 
@@ -430,8 +435,9 @@ int main(int argc, char* argv[])
         tcp_apps.back().Stop(Seconds(simulation_end));
     }
 
-    // Simulator::Schedule(Seconds(0.001), &TraceCwnd, tcp_devices.Get(i)->GetId(), 0, MakeCallback(&CwndChange));
-    // Packet sink setup (Receiver node)
+    // Simulator::Schedule(Seconds(0.001), &TraceCwnd,
+    // tcp_devices.Get(i)->GetId(), 0, MakeCallback(&CwndChange)); Packet sink
+    // setup (Receiver node)
     PacketSinkHelper sink("ns3::TcpSocketFactory",
                           InetSocketAddress(Ipv4Address::GetAny(), tcp_port));
     ApplicationContainer sink_app = sink.Install(nodes.Get(4));
@@ -463,7 +469,7 @@ int main(int argc, char* argv[])
     fPlotCwnd.open(dir + "n0.dat", std::ios::out);
     Simulator::Run();
     Simulator::Destroy();
-    
+
     fPlotCwnd.close();
     return 0;
 }
