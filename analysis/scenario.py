@@ -103,6 +103,19 @@ class VariableRun:
         rerouted_pcap = self.pcap(variable, "Router03", 1)
         return rerouted_pcap.number_of_packets_from_source(addresses.source)
 
+    @lru_cache
+    def udp_packets_rerouted_at(self, variable: str) -> int:
+        rerouted_pcap = self.pcap(variable, "Router03", 1)
+        number_rerouted = len(rerouted_pcap.udp_packets)
+        return number_rerouted
+
+    @lru_cache
+    def udp_packets_rerouted_percentage_at(self, variable: str) -> float:
+        udp_packets_sent = len(self.pcap(variable, "CongestionSender", 1).packets)
+        if udp_packets_sent == 0:
+            return 0.0
+        return (self.udp_packets_rerouted_at(variable) / udp_packets_sent) * 100
+
     def packets_rerouted_percentage_at(self, variable: str) -> float:
         return (
             self.packets_rerouted_at(variable) / self.packets_sent_by_source(variable)
@@ -180,6 +193,32 @@ class VariableRun:
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
                     value=self.udp_packets_loss_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def udp_rerouted(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.udp_packets_rerouted_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def udp_rerouted_percentage(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.udp_packets_rerouted_percentage_at(variable),
                 )
                 for variable in self.variables
             ),
@@ -383,6 +422,34 @@ class Scenario:
                     self.runs.items(),
                     console=console,
                     description=f"Calculating UDP Lost for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("_udp_rerouted")
+    def udp_rerouted(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.udp_rerouted
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating UDP Rerouted for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("_udp_rerouted_percentage")
+    def udp_rerouted_percentage(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.udp_rerouted_percentage
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating UDP Rerouted Percentage for {self.option}",
                 )
             }
         )

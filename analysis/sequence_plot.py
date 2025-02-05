@@ -26,13 +26,7 @@ LINE_COLOURS = [
     "orange",
 ]
 
-PREMADE_COLORS = [
-    "blue",
-    "green",
-    "purple",
-    "brown",
-    "pink",
-]
+PREMADE_COLORS = ["blue", "green", "purple", "brown", "pink", "grey"]
 
 SYMBOLS = [
     "square",
@@ -41,6 +35,7 @@ SYMBOLS = [
     "x",
     "triangle-up",
     "star",
+    "hexagram",
 ]
 
 

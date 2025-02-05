@@ -8,6 +8,10 @@ import rich.table
 
 from analysis import discovery, graph, scenario
 from analysis.sequence_plot import Packets, build_conditions, plot_sequence
+from analysis.trace_analyzer.dst.reordered_packets import PacketOutOfOrderAnalyzer
+from analysis.trace_analyzer.dst.spurious_retransmission_packets import (
+    SpuriousRetransmissionAnalyzer,
+)
 from analysis.trace_analyzer.source.dropped_packets import DroppedPacketsAnalyzer
 from analysis.trace_analyzer.source.regular_fast_retransmit import (
     FastRetransmissionAnalyzer,
@@ -127,11 +131,18 @@ def _sequence(
             )
         )
     if receiver_seq:
+        print(receiver.filename)
         packet_lists.append(
             Packets(
                 "Receiver Seq",
                 receiver.packets_from(source),
                 operator.attrgetter("seq"),
+                build_conditions(
+                    SpuriousRetransmissionAnalyzer(receiver),
+                    PacketOutOfOrderAnalyzer(receiver),
+                    source=source,
+                    destination=dst,
+                ),
             )
         )
 
@@ -284,6 +295,28 @@ def _rerouted_percentage(ctx: click.Context) -> None:
     ctx.obj["title"] = "Rerouted Packets Percentage"
 
 
+@click.group(name="udp_rerouted")
+@click.pass_context
+def _udp_rerouted(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.udp_rerouted
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Rerouted Packets"
+    ctx.obj["title"] = "Rerouted Packets"
+
+
+@click.group(name="udp_rerouted_percentage")
+@click.pass_context
+def _udp_rerouted_percentage(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.udp_rerouted_percentage
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Rerouted Packets Percentage"
+    ctx.obj["title"] = "Rerouted Packets Percentage"
+
+
 statistics = (
     _time,
     _loss,
@@ -293,6 +326,8 @@ statistics = (
     _rerouted_percentage,
     _udp_lost,
     _udp_loss,
+    _udp_rerouted,
+    _udp_rerouted_percentage,
 )
 
 
@@ -330,9 +365,9 @@ def plot(ctx: click.Context) -> None:
     )
 
 
-@multi_command(*statistics, name="table")
+@multi_command(*statistics, name="summary")
 @click.pass_context
-def table(ctx: click.Context) -> None:
+def summary(ctx: click.Context) -> None:
     stats = ctx.obj["statistics"]
     console = rich.console.Console()
 
@@ -368,6 +403,34 @@ def table(ctx: click.Context) -> None:
                 str(round(std_dev.value, 2)),
             )
         console.print(table)
+
+
+@multi_command(*statistics, name="table")
+@click.pass_context
+def table(ctx: click.Context) -> None:
+    stats = ctx.obj["statistics"]
+    console = rich.console.Console()
+
+    first_stat = next(iter(stats.values()))
+
+    for idx in range(len(first_stat.variables)):
+        for option, scenario in stats.items():
+            table = rich.table.Table(
+                title=f"{first_stat.variables[idx]} @ {option}",
+                show_header=True,
+                header_style="bold",
+            )
+            table.add_column("Seed")
+            table.add_column("Value")
+            for seed, value in sorted(
+                zip(scenario.data.keys(), scenario.plots[idx].data),
+                key=lambda x: int(x[0]),
+            ):
+                table.add_row(
+                    seed,
+                    str(value),
+                )
+            console.print(table)
 
 
 for statistic in statistics:
