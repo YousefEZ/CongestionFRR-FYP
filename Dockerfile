@@ -24,26 +24,26 @@ RUN apt install -y python3-dev pkg-config python3-setuptools
 # RUN python3 -m pip install cppyy==2.4.2
 
 # Download the tar file
-ADD https://www.nsnam.org/release/ns-allinone-3.41.tar.bz2 /usr/workspace
+ADD https://www.nsnam.org/release/ns-allinone-3.43.tar.bz2 /usr/workspace
 
 # Unpack the tar file
-RUN tar xfj /usr/workspace/ns-allinone-3.41.tar.bz2
+RUN tar xfj /usr/workspace/ns-allinone-3.43.tar.bz2
 
 # Building the application
-WORKDIR /usr/workspace/ns-allinone-3.41
+WORKDIR /usr/workspace/ns-allinone-3.43
 RUN ./build.py
 
 
-WORKDIR /usr/workspace/ns-allinone-3.41/ns-3.41
+WORKDIR /usr/workspace/ns-allinone-3.43/ns-3.43
 RUN ./ns3 configure --build-profile=debug --out=build/debug
 
 RUN ./ns3 build 
 
 # Copy the script into the container
-COPY entrypoint.sh /usr/workspace/ns-allinone-3.41/ns-3.41/entrypoint.sh
+COPY entrypoint.sh /usr/workspace/ns-allinone-3.43/ns-3.43/entrypoint.sh
 
 # Make the script executable
-RUN chmod +x /usr/workspace/ns-allinone-3.41/ns-3.41/entrypoint.sh
+RUN chmod +x /usr/workspace/ns-allinone-3.43/ns-3.43/entrypoint.sh
 
 # Set the script as the entrypoint
-ENTRYPOINT ["/usr/workspace/ns-allinone-3.41/ns-3.41/entrypoint.sh"]
+ENTRYPOINT ["/usr/workspace/ns-allinone-3.43/ns-3.43/entrypoint.sh"]
