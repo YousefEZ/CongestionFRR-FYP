@@ -42,7 +42,7 @@ using FRRChannel = PointToPointFRRChannel<FRRPolicy>;
 
 std::ofstream fPlotCwnd;
 
-std::unordered_map<uint32_t, std::ofstream> fQueueSizes;
+std::unordered_map<std::string, std::ofstream> fQueues;
 
 void toggleCongestion(Ptr<SimulationQueue> queue)
 {
@@ -99,6 +99,22 @@ static void RTOChange(Time oldRTO, Time newRTO)
               << ", newRTO=" << newRTO.As(Time::S) << std::endl;
 }
 
+static void PacketInQueueChange(std::string queue, uint32_t oldPacketCount,
+                                 uint32_t newPacketCount)
+{
+    std::ofstream& fQueue = fQueues[queue];
+    fQueue << Simulator::Now().GetSeconds() << " "
+                            << newPacketCount << std::endl;
+}
+
+static void EnqueuePacket(std::string queue, Ptr<const Packet> packet)
+{
+  std::ofstream& fQueue = fQueues[queue];
+  fQueue << Simulator::Now().GetSeconds() << " ";
+  packet->Print(fQueue);
+  fQueue << std::endl;
+}
+
 // Trace Function for cwnd
 void TraceCwnd(uint32_t node, uint32_t cwndWindow,
                Callback<void, uint32_t, uint32_t> CwndTrace)
@@ -118,6 +134,7 @@ void TraceRTO(uint32_t node, uint32_t cwndWindow,
                                       std::to_string(cwndWindow) + "/RTO",
                                   RTOTrace);
 }
+
 
 // Topology parameters
 std::string bandwidth_primary = "4Mbps";
@@ -147,7 +164,7 @@ void SetupTCPConfig()
     // Set delayed ack count
     // Config::SetDefault("ns3::TcpSocket::DelAckTimeout",
     // TimeValue(Time("1ms")));
-    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
+    // Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
     // Set segment size of packet
     Config::SetDefault("ns3::TcpSocket::SegmentSize",
                        UintegerValue(segmentSize));
@@ -241,7 +258,9 @@ int main(int argc, char* argv[])
     ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_LEVEL_DEBUG);
     ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_PREFIX_TIME);
     ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_LEVEL_DEBUG);
-    ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_LEVEL_DEBUG);
+    ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_PREFIX_TIME);
+    ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_LEVEL_INFO);
+    ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_PREFIX_TIME);
 
     Names::Add("Router01", nodes.Get(1));
     Names::Add("Router02", nodes.Get(2));
@@ -291,6 +310,9 @@ int main(int argc, char* argv[])
     std::shared_ptr<PointToPointFRRHelper<FRRPolicy>> p2p_congested_link;
     std::shared_ptr<PointToPointHelper> p2p_congested_link_no_frr;
 
+    fQueues["CongestedQueue"];
+    fQueues["MiddleQueue"];
+    fQueues["AlternateQueue"];
     if (enable_rerouting) {
         p2p_congested_link =
             std::make_shared<PointToPointFRRHelper<FRRPolicy>>();
@@ -303,6 +325,9 @@ int main(int argc, char* argv[])
         // p2p_congested_link.SetQueue("ns3::DropTailQueue<Packet>");
 
         devices_2_3 = p2p_congested_link->Install(nodes.Get(1), nodes.Get(2));
+        auto queue = getQueue<0>(devices_2_3);
+        queue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
+        queue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue")); 
         p2p_congested_link->EnablePcapAll(dir);
     } else {
         p2p_congested_link_no_frr = std::make_shared<PointToPointHelper>();
@@ -315,6 +340,11 @@ int main(int argc, char* argv[])
 
         devices_2_3 =
             p2p_congested_link_no_frr->Install(nodes.Get(1), nodes.Get(2));
+        
+        auto queue = getDevice<0, PointToPointNetDevice>(devices_2_3)->GetQueue();
+        queue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
+        queue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue")); 
+
         p2p_congested_link_no_frr->EnablePcapAll(dir);
     }
 
@@ -327,6 +357,15 @@ int main(int argc, char* argv[])
 
     NetDeviceContainer devices_M_2 =
         p2p_traffic.Install(nodes.Get(5), nodes.Get(1));
+
+
+    auto middleQueue = getDevice<0, PointToPointNetDevice>(devices_M_2)->GetQueue();
+    middleQueue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "MiddleQueue"));
+    middleQueue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "MiddleQueue"));
+
+    auto queue = getDevice<0, PointToPointNetDevice>(devices_2_4)->GetQueue();
+    queue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "AlternateQueue"));
+    queue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "AlternateQueue"));
 
     // Configure PointToPoint link for congestion link
     PointToPointHelper p2p_congestion;
@@ -467,9 +506,15 @@ int main(int argc, char* argv[])
     p2p_congestion.EnablePcapAll(dir);
 
     fPlotCwnd.open(dir + "n0.dat", std::ios::out);
+    for (auto& [queueName, q]: fQueues) {
+        q.open(dir + queueName + ".dat", std::ios::out);
+    }
     Simulator::Run();
     Simulator::Destroy();
 
     fPlotCwnd.close();
+    for (auto& [queueName, q]: fQueues) {
+        q.close();
+    }
     return 0;
 }
