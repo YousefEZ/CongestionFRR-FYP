@@ -100,19 +100,19 @@ static void RTOChange(Time oldRTO, Time newRTO)
 }
 
 static void PacketInQueueChange(std::string queue, uint32_t oldPacketCount,
-                                 uint32_t newPacketCount)
+                                uint32_t newPacketCount)
 {
     std::ofstream& fQueue = fQueues[queue];
-    fQueue << Simulator::Now().GetSeconds() << " "
-                            << newPacketCount << std::endl;
+    fQueue << Simulator::Now().GetSeconds() << " " << newPacketCount
+           << std::endl;
 }
 
 static void EnqueuePacket(std::string queue, Ptr<const Packet> packet)
 {
-  std::ofstream& fQueue = fQueues[queue];
-  fQueue << Simulator::Now().GetSeconds() << " ";
-  packet->Print(fQueue);
-  fQueue << std::endl;
+    std::ofstream& fQueue = fQueues[queue];
+    fQueue << Simulator::Now().GetSeconds() << " ";
+    packet->Print(fQueue);
+    fQueue << std::endl;
 }
 
 // Trace Function for cwnd
@@ -134,7 +134,6 @@ void TraceRTO(uint32_t node, uint32_t cwndWindow,
                                       std::to_string(cwndWindow) + "/RTO",
                                   RTOTrace);
 }
-
 
 // Topology parameters
 std::string bandwidth_primary = "4Mbps";
@@ -326,8 +325,11 @@ int main(int argc, char* argv[])
 
         devices_2_3 = p2p_congested_link->Install(nodes.Get(1), nodes.Get(2));
         auto queue = getQueue<0>(devices_2_3);
-        queue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
-        queue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue")); 
+        queue->TraceConnectWithoutContext(
+            "PacketsInQueue",
+            MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
+        queue->TraceConnectWithoutContext(
+            "Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue"));
         p2p_congested_link->EnablePcapAll(dir);
     } else {
         p2p_congested_link_no_frr = std::make_shared<PointToPointHelper>();
@@ -340,10 +342,14 @@ int main(int argc, char* argv[])
 
         devices_2_3 =
             p2p_congested_link_no_frr->Install(nodes.Get(1), nodes.Get(2));
-        
-        auto queue = getDevice<0, PointToPointNetDevice>(devices_2_3)->GetQueue();
-        queue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
-        queue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue")); 
+
+        auto queue =
+            getDevice<0, PointToPointNetDevice>(devices_2_3)->GetQueue();
+        queue->TraceConnectWithoutContext(
+            "PacketsInQueue",
+            MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
+        queue->TraceConnectWithoutContext(
+            "Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue"));
 
         p2p_congested_link_no_frr->EnablePcapAll(dir);
     }
@@ -358,14 +364,20 @@ int main(int argc, char* argv[])
     NetDeviceContainer devices_M_2 =
         p2p_traffic.Install(nodes.Get(5), nodes.Get(1));
 
-
-    auto middleQueue = getDevice<0, PointToPointNetDevice>(devices_M_2)->GetQueue();
-    middleQueue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "MiddleQueue"));
-    middleQueue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "MiddleQueue"));
+    auto middleQueue =
+        getDevice<0, PointToPointNetDevice>(devices_M_2)->GetQueue();
+    middleQueue->TraceConnectWithoutContext(
+        "PacketsInQueue",
+        MakeBoundCallback(&PacketInQueueChange, "MiddleQueue"));
+    middleQueue->TraceConnectWithoutContext(
+        "Enqueue", MakeBoundCallback(&EnqueuePacket, "MiddleQueue"));
 
     auto queue = getDevice<0, PointToPointNetDevice>(devices_2_4)->GetQueue();
-    queue->TraceConnectWithoutContext("PacketsInQueue", MakeBoundCallback(&PacketInQueueChange, "AlternateQueue"));
-    queue->TraceConnectWithoutContext("Enqueue", MakeBoundCallback(&EnqueuePacket, "AlternateQueue"));
+    queue->TraceConnectWithoutContext(
+        "PacketsInQueue",
+        MakeBoundCallback(&PacketInQueueChange, "AlternateQueue"));
+    queue->TraceConnectWithoutContext(
+        "Enqueue", MakeBoundCallback(&EnqueuePacket, "AlternateQueue"));
 
     // Configure PointToPoint link for congestion link
     PointToPointHelper p2p_congestion;
@@ -506,14 +518,14 @@ int main(int argc, char* argv[])
     p2p_congestion.EnablePcapAll(dir);
 
     fPlotCwnd.open(dir + "n0.dat", std::ios::out);
-    for (auto& [queueName, q]: fQueues) {
+    for (auto& [queueName, q] : fQueues) {
         q.open(dir + queueName + ".dat", std::ios::out);
     }
     Simulator::Run();
     Simulator::Destroy();
 
     fPlotCwnd.close();
-    for (auto& [queueName, q]: fQueues) {
+    for (auto& [queueName, q] : fQueues) {
         q.close();
     }
     return 0;
