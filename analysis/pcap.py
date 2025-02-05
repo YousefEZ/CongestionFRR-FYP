@@ -3,11 +3,14 @@ from functools import cached_property
 from typing import NamedTuple, Optional
 
 import pyshark
+import scapy.packet
 from scapy.all import rdpcap, PacketList
-from scapy.layers.inet import IP, TCP
+from scapy.layers.inet import IP, TCP, UDP
 
 SOURCE = "10.1.2.1"
-DESTINATION = "10.1.6.2"
+DESTINATION = "10.1.7.2"
+
+SMSS = 1446
 
 
 class Communication(NamedTuple):
@@ -28,6 +31,14 @@ class PcapFile:
     def packets(self) -> PacketList:
         return rdpcap(self.filename)
 
+    @cached_property
+    def tcp_packets(self) -> list[scapy.packet.Packet]:
+        return [pkt for pkt in self.packets if TCP in pkt]
+
+    @cached_property
+    def udp_packets(self) -> list[scapy.packet.Packet]:
+        return [pkt for pkt in self.packets if UDP in pkt]
+
     @property
     def first_addresses(self) -> Communication:
         return Communication(self.packets[0][IP].src, self.packets[0][IP].dst)
@@ -45,7 +56,7 @@ class PcapFile:
         return len(self.packets_from(source))
 
     def flow_completion_time(self, source: str, destination: str) -> Optional[float]:
-        for packet in filter(lambda packet: TCP in packet, self.packets):
+        for packet in self.tcp_packets:
             if (
                 packet.getlayer("IP").src == destination
                 and packet.getlayer("IP").dst == source
@@ -61,5 +72,7 @@ class PcapFile:
             display_filter=f"ip.src=={source} and tcp.analysis.out_of_order",
         )
         packets = list(file_capture)
+        print(self.filename, len(packets))
+
         file_capture.close()
         return len(packets)

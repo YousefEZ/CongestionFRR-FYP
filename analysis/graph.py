@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NamedTuple, NotRequired, Optional, TypedDict
 
+from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import numpy as np
 from pydantic import BaseModel
@@ -9,8 +10,6 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from analysis import statistic
 from analysis.discovery import Options, Seed
-
-__all__ = "Customisation", "Plot", "plot"
 
 
 class Style(TypedDict):
@@ -45,6 +44,34 @@ def _sort_plots(plots: list[Plot]) -> list[Plot]:
     return sorted(plots, key=lambda x: x.variable)
 
 
+def single_point_plot(
+    stats: dict[Options, statistic.Statistic],
+    axes: Axes,
+    option: Options,
+    styles: Optional[dict[str, Style]] = None,
+) -> None:
+    average_plot = stats[option].average[0]
+    std_dev = stats[option].standard_deviation[0].value
+    if styles:
+        style = styles.get(option, {})
+        axes.errorbar(
+            [average_plot.variable],
+            [average_plot.value],
+            xerr=0,
+            yerr=std_dev,
+            label=option,
+            **style.get(option, {}),
+        )
+    else:
+        axes.errorbar(
+            [average_plot.variable],
+            [average_plot.value],
+            xerr=0,
+            yerr=std_dev,
+            label=option,
+        )
+
+
 def plot(
     stats: dict[Options, statistic.Statistic],
     labels: Labels,
@@ -55,6 +82,9 @@ def plot(
 
     for option, statistic in stats.items():
         plots = _sort_plots(statistic.average)
+        if len(plots) == 1:
+            single_point_plot(stats, axes, option, styles)
+            continue
         if styles:
             style = styles.get(option, {})
             axes.plot(
@@ -145,4 +175,10 @@ def cdf(
     else:
         figure.show()
 
-    figure.clf
+    figure.clf()
+
+
+def sequence_plots(
+    sender: None,
+    receiver: None,
+) -> None: ...

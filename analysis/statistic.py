@@ -28,11 +28,27 @@ class Statistic:
         plot_lists = [PlotList(variable, []) for variable in self.variables]
         for value in self.data.values():
             for plot_list, seed_plot in zip(plot_lists, value):
-                assert (
-                    plot_list.variable == seed_plot.variable
-                ), "Variables do not match"
+                assert plot_list.variable == seed_plot.variable, (
+                    "Variables do not match"
+                )
                 plot_list.data.append(seed_plot.value)
         return plot_lists
+
+    @property
+    def minimum(self) -> list[graph.Plot]:
+        assert self.data
+        return [
+            graph.Plot(variable=plot.variable, value=min(plot.data))
+            for plot in self.plots
+        ]
+
+    @property
+    def maximum(self) -> list[graph.Plot]:
+        assert self.data
+        return [
+            graph.Plot(variable=plot.variable, value=max(plot.data))
+            for plot in self.plots
+        ]
 
     @property
     def average(self) -> list[graph.Plot]:
