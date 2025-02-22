@@ -30,6 +30,7 @@ ADD https://www.nsnam.org/release/ns-allinone-3.43.tar.bz2 /usr/workspace
 RUN tar xfj /usr/workspace/ns-allinone-3.43.tar.bz2
 
 # Building the application
+COPY libs/tcp-tx-buffer.cc /usr/workspace/ns-allinone-3.43/ns-3.43/src/internet/model/tcp-tx-buffer.cc
 WORKDIR /usr/workspace/ns-allinone-3.43
 RUN ./build.py
 
