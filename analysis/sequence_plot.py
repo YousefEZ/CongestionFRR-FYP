@@ -1,23 +1,11 @@
 from dataclasses import field
-import operator
 from typing import Callable
 
 from scapy.all import dataclass
 import scapy.packet
 
-from analysis.pcap import DESTINATION, SOURCE, PcapFile
 import plotly.graph_objects as go
 from analysis.trace_analyzer.analyzer import PacketAnalyzer
-from analysis.trace_analyzer.source.dropped_packets import DroppedPacketsAnalyzer
-from analysis.trace_analyzer.source.regular_fast_retransmit import (
-    FastRetransmissionAnalyzer,
-)
-from analysis.trace_analyzer.source.sack_fast_retransmit import (
-    FastRetransmitSackAnalyzer,
-)
-from analysis.trace_analyzer.source.spurious_sack_fast_transmit import (
-    SingleDupAckRetransmitSackAnalyzer,
-)
 
 LINE_COLOURS = [
     "red",
@@ -26,16 +14,26 @@ LINE_COLOURS = [
     "orange",
 ]
 
-PREMADE_COLORS = ["blue", "green", "purple", "brown", "pink", "grey"]
+PREMADE_COLORS = [
+    "black",
+    "blue",
+    "green",
+    "purple",
+    "brown",
+    "grey",
+    "magenta",
+    "teal",
+]
 
 SYMBOLS = [
+    "hexagram",
     "square",
     "diamond",
     "cross",
     "x",
     "triangle-up",
     "star",
-    "hexagram",
+    "star-triangle-up",
 ]
 
 
@@ -132,8 +130,14 @@ def plot_sequence(*packets_list: Packets) -> None:
 
     fig.update_layout(
         title="Interactive Stevens Step Sequence Plot",
-        xaxis_title="Timestamp",
-        yaxis_title="Sequence Number",
+        xaxis=dict(
+            title=dict(text="Timestamp", font=dict(size=20)), tickfont=dict(size=20)
+        ),
+        yaxis=dict(
+            title=dict(text="Sequence Number", font=dict(size=20)),
+            tickfont=dict(size=20),
+        ),
+        legend=dict(font=dict(size=20)),
         legend_title="Legend",
         template="plotly_white",
         hovermode="x unified",
@@ -143,32 +147,59 @@ def plot_sequence(*packets_list: Packets) -> None:
     fig.show()
 
 
-if __name__ == "__main__":
-    sender = PcapFile(
-        "traces/bandwidth_primary/baseline-udp/7438211/3.0Mbps/-TrafficSender0-1.pcap"
+AmountAtTime = tuple[float, int]
+
+
+def plot_bytesInFlight(
+    true_bytesInFlight: list[AmountAtTime],
+    bytesInFlight: list[AmountAtTime],
+    cwnds: list[AmountAtTime],
+):
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[flight[0] for flight in true_bytesInFlight],
+            y=[flight[1] for flight in true_bytesInFlight],
+            mode="lines+markers",
+            line_shape="hv",  # Step plot style
+            name="True Bytes in Flight",
+            hovertemplate="Time: %{x}<br>BytesInFlight: %{y}<extra></extra>",
+        )
     )
-    receiver = PcapFile(
-        "traces/bandwidth_primary/baseline-udp/7438211/3.0Mbps/-Receiver-1.pcap"
+    fig.add_trace(
+        go.Scatter(
+            x=[flight[0] for flight in bytesInFlight],
+            y=[flight[1] for flight in bytesInFlight],
+            mode="lines+markers",
+            line_shape="hv",  # Step plot style
+            name="TCP Bytes in Flight",
+            hovertemplate="Time: %{x}<br>BytesInFlight: %{y}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[cwnd[0] for cwnd in cwnds],
+            y=[cwnd[1] for cwnd in cwnds],
+            mode="lines+markers",
+            line_shape="hv",  # Step plot style
+            name="Congestion Windows",
+            hovertemplate="Time: %{x}<br>Congestion Window Size (Segments): %{y}<extra></extra>",
+        )
     )
 
-    sender_seq = Packets(
-        "Sender Seq",
-        sender.packets_from(SOURCE),
-        operator.attrgetter("seq"),
-        build_conditions(
-            SingleDupAckRetransmitSackAnalyzer(sender),
-            FastRetransmitSackAnalyzer(sender),
-            FastRetransmissionAnalyzer(sender),
-            DroppedPacketsAnalyzer(sender, receiver),
-            source=SOURCE,
-            destination=DESTINATION,
+    fig.update_layout(
+        title="Interactive Bytes in Flight Plot",
+        xaxis=dict(
+            title=dict(text="Timestamp", font=dict(size=20)), tickfont=dict(size=20)
         ),
+        yaxis=dict(
+            title=dict(text="Number Of Segments", font=dict(size=20)),
+            tickfont=dict(size=20),
+        ),
+        legend=dict(font=dict(size=20)),
+        legend_title="Legend",
+        template="plotly_white",
+        hovermode="x unified",
     )
 
-    receiver_acks = Packets(
-        "Receiver Ack",
-        sender.packets_from(DESTINATION),
-        operator.attrgetter("ack"),
-    )
-
-    plot_sequence(sender_seq, receiver_acks)
+    fig.show()

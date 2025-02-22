@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import override
 
 import scapy
+from scapy.layers.inet import TCP
 import scapy.packet
 
 from analysis.trace_analyzer.analyzer import PacketAnalyzer
@@ -35,19 +36,50 @@ class SingleDupAckRetransmitPacketCapture(PacketCapture):
             self.packets.append(packet)
 
 
+def hashable_packet(packet):
+    return packet[TCP].seq, packet[TCP].ack, dict(packet[TCP].options)["Timestamp"]
+
+
 @dataclass(frozen=True)
 class SingleDupAckRetransmitSackAnalyzer(PacketAnalyzer):
-    file: PcapFile
+    sender: PcapFile
+    receiver: PcapFile
     name: str = "Single Dup Ack Fast Retransmit"
 
     def filter_packets(
         self, source: str, destination: str
     ) -> list[scapy.packet.Packet]:
+        received_packets = self.receiver.packets_from(source)
+        sent_packets = self.sender.packets_from(source)
+
+        hashed_received_packets = [
+            hashable_packet(packet) for packet in received_packets
+        ]
+
+        delivered_sent_packets = [
+            packet
+            for packet in sent_packets
+            if hashable_packet(packet) in hashed_received_packets
+        ]
+
+        spurious_retransmissions = set()
+        already_transmitted = set()
+
+        for sent_packet in delivered_sent_packets:
+            if sent_packet[TCP].seq in already_transmitted:
+                spurious_retransmissions.add(hashable_packet(sent_packet))
+            already_transmitted.add(sent_packet[TCP].seq)
+
         capture = SingleDupAckRetransmitPacketCapture()
         replayer.TcpSourceReplayer(
-            file=self.file,
+            file=self.sender,
             source=source,
             destination=destination,
             event_handlers=capture,
         ).run()
-        return capture.packets
+
+        return [
+            packet
+            for packet in capture.packets
+            if hashable_packet(packet) in spurious_retransmissions
+        ]

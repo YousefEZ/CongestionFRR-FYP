@@ -79,7 +79,7 @@ Ptr<SimulationQueue> getQueue(const NetDeviceContainer& devices)
 
 template <int INDEX>
 void setAlternateTarget(const NetDeviceContainer& devices,
-                        Ptr<ns3::NetDevice> target)
+                        Ptr<ns3::PointToPointNetDevice> target)
 {
     getDevice<INDEX, FRRNetDevice>(devices)->addAlternateTarget(target);
 }
@@ -136,7 +136,7 @@ void TraceRTO(uint32_t node, uint32_t cwndWindow,
 }
 
 // Topology parameters
-std::string bandwidth_primary = "4Mbps";
+std::string bandwidth_primary = "3Mbps";
 std::string bandwidth_access = "3Mbps";
 std::string bandwidth_udp_access = "3Mbps";
 std::string delay_bottleneck = "2ms";
@@ -163,7 +163,7 @@ void SetupTCPConfig()
     // Set delayed ack count
     // Config::SetDefault("ns3::TcpSocket::DelAckTimeout",
     // TimeValue(Time("1ms")));
-    // Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
+    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
     // Set segment size of packet
     Config::SetDefault("ns3::TcpSocket::SegmentSize",
                        UintegerValue(segmentSize));
@@ -446,7 +446,8 @@ int main(int argc, char* argv[])
 
         udp_source->SetAttribute("DataRate",
                                  DataRateValue(DataRate(bandwidth_udp_access)));
-        udp_source->SetAttribute("PacketSize", UintegerValue(1470));
+        // udp_source->SetAttribute("PacketSize", UintegerValue(1470));
+        udp_source->SetAttribute("PacketSize", UintegerValue(1250));
 
         udp_app = std::make_shared<ApplicationContainer>(
             udp_source->Install(nodes.Get(0)));

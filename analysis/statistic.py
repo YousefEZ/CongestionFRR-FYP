@@ -20,14 +20,18 @@ class Statistic:
     data: dict[discovery.Seed, list[graph.Plot]]
 
     @cached_property
+    def seeds(self) -> list[discovery.Seed]:
+        return sorted(list(self.data.keys()))
+
+    @cached_property
     def variables(self):
         return sorted([plot.variable for plot in list(self.data.values())[0]])
 
     @cached_property
     def plots(self) -> list[PlotList]:
         plot_lists = [PlotList(variable, []) for variable in self.variables]
-        for value in self.data.values():
-            for plot_list, seed_plot in zip(plot_lists, value):
+        for seed in self.seeds:
+            for plot_list, seed_plot in zip(plot_lists, self.data[seed]):
                 assert plot_list.variable == seed_plot.variable, (
                     "Variables do not match"
                 )

@@ -146,7 +146,7 @@ class PointToPointFRRNetDevice : public NetDevice
 
     bool isCongested();
 
-    void addAlternateTarget(Ptr<ns3::NetDevice> device);
+    void addAlternateTarget(Ptr<ns3::PointToPointNetDevice> device);
 
     static std::string makeNetDeviceString();
     static const std::string& getNetDeviceString();
@@ -935,7 +935,7 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::IsBridge() const
 
 template <typename FRR_POLICY>
 void PointToPointFRRNetDevice<FRR_POLICY>::addAlternateTarget(
-    Ptr<ns3::NetDevice> device)
+    Ptr<ns3::PointToPointNetDevice> device)
 {
     m_frr_policy.addAlternateTargets(device);
 }
@@ -966,7 +966,7 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::Send(Ptr<Packet> packet,
         return false;
     }
 
-    if (isCongested()) {
+    if (isCongested() && m_frr_policy.reroutable()) {
         if (true) {
             AddHeader(packet, protocolNumber);
             m_macTxTrace(packet);

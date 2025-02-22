@@ -7,8 +7,21 @@ import rich
 import rich.table
 
 from analysis import discovery, graph, scenario
-from analysis.sequence_plot import Packets, build_conditions, plot_sequence
-from analysis.trace_analyzer.dst.reordered_packets import PacketOutOfOrderAnalyzer
+from analysis.sequence_plot import (
+    Packets,
+    build_conditions,
+    plot_bytesInFlight,
+    plot_sequence,
+)
+from analysis.trace_analyzer.dst.reordered_packets import (
+    OOOAnalyzer,
+    PacketOutOfOrderAnalyzer,
+    SpuriousOOOAnalyzer,
+    TrueBytesInFlightAnalyzer,
+    congestion_windows,
+    hashable_packet,
+    tcp_bytes_in_flight,
+)
 from analysis.trace_analyzer.dst.spurious_retransmission_packets import (
     SpuriousRetransmissionAnalyzer,
 )
@@ -16,6 +29,7 @@ from analysis.trace_analyzer.source.dropped_packets import DroppedPacketsAnalyze
 from analysis.trace_analyzer.source.regular_fast_retransmit import (
     FastRetransmissionAnalyzer,
 )
+from analysis.trace_analyzer.source.replayer import TcpSourceReplayer
 from analysis.trace_analyzer.source.sack_fast_retransmit import (
     FastRetransmitSackAnalyzer,
 )
@@ -33,14 +47,17 @@ graph_types: list[GraphTypes] = ["plot", "cdf"]
 def multi_command(
     *groups: click.Group, name: str
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    def decorator(command: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+        if hasattr(func, "__click_params__"):
+            # need to preserve it as command deletes it
+            params = func.__click_params__  # type: ignore
+        else:
+            params = None
         for group in groups:
-
-            @group.command(name=name)
-            def _(*args: P.args, **kwargs: P.kwargs) -> T:
-                return command(*args, **kwargs)
-
-        return command
+            new_func = group.command(name=name)(func)
+            if params is not None:
+                new_func.params = params
+        return func
 
     return decorator
 
@@ -73,6 +90,39 @@ class GraphArguments:
     seeds: list[discovery.Seed]
     variables: list[discovery.Variable]
     output: Optional[str]
+
+
+@click.command("bytesInFlight")
+@click.option("--directory", "-d", help="Path to the directory", required=True)
+@click.option("--directory", "-d", help="Path to the directory", required=True)
+@click.option("--option", "-o", help="Option of the run", required=True)
+@click.option("--seed", "-s", help="Seed of the run", required=True)
+@click.option("--value", "-v", help="Value to display e.g. 3.0Mbps", required=True)
+def _bytesInFlight(
+    directory: str,
+    option: discovery.Options,
+    seed: discovery.Seed,
+    value: discovery.Variable,
+) -> None:
+    run = scenario.VariableRun(directory, option, seed, (value,))
+    sender, receiver = run.senders[value], run.receivers[value]
+    source, dst = run.ip_addresses(value)
+
+    dropped_packets = DroppedPacketsAnalyzer(sender, receiver).filter_packets(
+        source, dst
+    )
+    capture = TrueBytesInFlightAnalyzer(
+        lost_packets=[hashable_packet(pkt) for pkt in dropped_packets]
+    )
+    TcpSourceReplayer(
+        file=sender, source=source, destination=dst, event_handlers=capture
+    ).run()
+
+    plot_bytesInFlight(
+        capture.bytes_in_flight,
+        tcp_bytes_in_flight(run.debug_filename(value)),
+        congestion_windows(run.cwnd_filename(value)),
+    )
 
 
 @click.command("sequence")
@@ -113,10 +163,12 @@ def _sequence(
                 sender.packets_from(source),
                 operator.attrgetter("seq"),
                 build_conditions(
-                    SingleDupAckRetransmitSackAnalyzer(sender),
+                    SpuriousOOOAnalyzer(sender, receiver),
+                    SingleDupAckRetransmitSackAnalyzer(sender, receiver),
                     FastRetransmitSackAnalyzer(sender),
                     FastRetransmissionAnalyzer(sender),
                     DroppedPacketsAnalyzer(sender, receiver),
+                    OOOAnalyzer(sender, receiver),
                     source=source,
                     destination=dst,
                 ),
@@ -317,6 +369,72 @@ def _udp_rerouted_percentage(ctx: click.Context) -> None:
     ctx.obj["title"] = "Rerouted Packets Percentage"
 
 
+@click.group(name="spurious_retransmissions")
+@click.pass_context
+def _spurious_retransmissions(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.spurious_retransmissions
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Spurious Retransmissions"
+    ctx.obj["title"] = "Spurious Retransmissions"
+
+
+@click.group(name="spurious_retransmissions_from_reordering")
+@click.pass_context
+def _spurious_retransmissions_reordering(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.spurious_retransmissions_from_reordering
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Spurious Retransmissions From Reordering"
+    ctx.obj["title"] = "Spurious Retransmissions From Reordering"
+
+
+@click.group(name="longest_number_spurious_retransmissions_before_rto")
+@click.pass_context
+def _longest_number_spurious_retransmissions_before_rto(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.longest_number_of_packets_spuriously_retransmitted_before_rto
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Longest Number of Spurious Retransmissions Before RTO"
+    ctx.obj["title"] = "Longest Number of Spurious Retransmissions Before RTO"
+
+
+@click.group(name="rto_wait_time")
+@click.pass_context
+def _rto_wait_time(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.rto_wait_time
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "RTO wait time"
+    ctx.obj["title"] = "RTO wait time"
+
+
+@click.group(name="dropped_retransmitted_packets")
+@click.pass_context
+def _dropped_retransmitted_packets(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.dropped_retransmitted_packets
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Dropped Retransmitted Packets"
+    ctx.obj["title"] = "Dropped Retransmitted Packets"
+
+
+@click.group(name="rto_wait_time_unsent_data")
+@click.pass_context
+def _rto_wait_time_unsent_data(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.rto_wait_time_for_unsent
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "RTO wait time on unsent data"
+    ctx.obj["title"] = "RTO wait time on unsent data"
+
+
 statistics = (
     _time,
     _loss,
@@ -328,20 +446,72 @@ statistics = (
     _udp_loss,
     _udp_rerouted,
     _udp_rerouted_percentage,
+    _spurious_retransmissions,
+    _rto_wait_time,
+    _rto_wait_time_unsent_data,
+    _dropped_retransmitted_packets,
+    _spurious_retransmissions_reordering,
+    _longest_number_spurious_retransmissions_before_rto,
 )
 
 
-@multi_command(*statistics, name="cdf")
+@multi_command(*statistics, name="cdf_diff")
 @click.pass_context
-def cdf(ctx: click.Context) -> None:
+def cdf_diff(ctx: click.Context) -> None:
     arguments = ctx.obj["arguments"]
     stats = ctx.obj["statistics"]
-    graph.cdf(
+    graph.cdf_time_diff(
         stats["baseline-udp"].data,
         stats["frr"].data,
         graph.Labels(
             x_axis=arguments.directory,
             y_axis="Probability of Occurrence",
+            title=ctx.obj["title"],
+        ),
+        target=arguments.output,
+    )
+
+
+@multi_command(*statistics, name="cdf")
+@click.option("--variable", "-v", help="Variable to plot", type=str, required=True)
+@click.pass_context
+def cdf(ctx: click.Context, variable: str) -> None:
+    arguments = ctx.obj["arguments"]
+    stats = ctx.obj["statistics"]
+
+    first_stat = next(iter(stats.values()))
+
+    extracted_variable = scenario.extract_numerical_value_from_string(variable)
+    variable_idx = 0
+    for idx in range(len(first_stat.variables)):
+        if first_stat.variables[idx] == extracted_variable:
+            variable_idx = idx
+            break
+
+    values = [plot[variable_idx].value for plot in first_stat.data.values()]
+
+    graph.cdf(
+        values,
+        graph.Labels(
+            x_axis=ctx.obj["property"],
+            y_axis="Probability of Occurrence",
+            title=ctx.obj["title"],
+        ),
+        target=arguments.output,
+    )
+
+
+@multi_command(*statistics, name="min_max_plot")
+@click.pass_context
+def min_max_plot(ctx: click.Context) -> None:
+    arguments = ctx.obj["arguments"]
+    stats = ctx.obj["statistics"]
+
+    graph.min_max_plot(
+        stats,
+        graph.Labels(
+            x_axis=arguments.directory,
+            y_axis=ctx.obj["property"],
             title=ctx.obj["title"],
         ),
         target=arguments.output,
@@ -414,7 +584,7 @@ def table(ctx: click.Context) -> None:
     first_stat = next(iter(stats.values()))
 
     for idx in range(len(first_stat.variables)):
-        for option, scenario in stats.items():
+        for option, stat in stats.items():
             table = rich.table.Table(
                 title=f"{first_stat.variables[idx]} @ {option}",
                 show_header=True,
@@ -423,7 +593,7 @@ def table(ctx: click.Context) -> None:
             table.add_column("Seed")
             table.add_column("Value")
             for seed, value in sorted(
-                zip(scenario.data.keys(), scenario.plots[idx].data),
+                list(zip(stat.seeds, stat.plots[idx].data)),
                 key=lambda x: int(x[0]),
             ):
                 table.add_row(
@@ -433,10 +603,40 @@ def table(ctx: click.Context) -> None:
             console.print(table)
 
 
+@click.group(name="against")
+@click.pass_context
+def _against(ctx: click.Context) -> None:
+    ctx.obj["against_statistics"] = ctx.obj["statistics"]
+    ctx.obj["against_property"] = ctx.obj["property"]
+    ctx.obj["against_title"] = ctx.obj["title"]
+
+
+@multi_command(*statistics, name="scatter")
+@click.option("--line", "-l", is_flag=True, default=False)
+@click.pass_context
+def scatter(ctx: click.Context, line: bool) -> None:
+    arguments = ctx.obj["arguments"]
+    stats = (ctx.obj["statistics"], ctx.obj["against_statistics"])
+
+    graph.correlation_scatter(
+        stats,
+        graph.Labels(
+            x_axis=ctx.obj["property"],
+            y_axis=ctx.obj["against_property"],
+            title=f"{ctx.obj['title']} against {ctx.obj['against_title']}",
+        ),
+        target=arguments.output,
+    )
+
+
 for statistic in statistics:
     _graph.add_command(statistic)
+    _against.add_command(statistic)
+    statistic.add_command(_against)
+
 _analysis.add_command(_graph)
 _analysis.add_command(_sequence)
+_analysis.add_command(_bytesInFlight)
 
 if __name__ == "__main__":
     _analysis()

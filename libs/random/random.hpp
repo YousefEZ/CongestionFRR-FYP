@@ -492,9 +492,10 @@ class basic_random_base
      * \note If container is empty return std::end( container ) iterator
      */
     template <typename Container>
-    static auto get(Container& container) -> typename std::enable_if<
-        details::is_iterator<decltype(std::begin(container))>::value,
-        decltype(std::begin(container))>::type
+    static auto get(Container& container) ->
+        typename std::enable_if<
+            details::is_iterator<decltype(std::begin(container))>::value,
+            decltype(std::begin(container))>::type
     {
         return get(std::begin(container), std::end(container));
     }
@@ -693,13 +694,14 @@ class basic_random_base
      * equals to sum
      */
     template <typename Key, class MapContainer>
-    static auto
-    get(const MapContainer& map_container) -> typename std::enable_if<
-        details::is_map<MapContainer>::value &&
-            details::is_iterator<decltype(std::begin(map_container))>::value &&
-            !std::is_signed<typename MapContainer::mapped_type>::value &&
-            std::is_same<Key, details::weight>::value,
-        decltype(std::begin(map_container))>::type
+    static auto get(const MapContainer& map_container) ->
+        typename std::enable_if<
+            details::is_map<MapContainer>::value &&
+                details::is_iterator<
+                    decltype(std::begin(map_container))>::value &&
+                !std::is_signed<typename MapContainer::mapped_type>::value &&
+                std::is_same<Key, details::weight>::value,
+            decltype(std::begin(map_container))>::type
     {
         using MappedType = typename MapContainer::mapped_type;
         using IteratorType = decltype(std::begin(map_container));
@@ -733,14 +735,15 @@ class basic_random_base
      * \note return the end iterator if the iterator is empty
      */
     template <typename Key, class MapContainer>
-    static auto
-    get(const MapContainer& map_container) -> typename std::enable_if<
-        details::is_map<MapContainer>::value &&
-            details::is_iterator<decltype(std::begin(map_container))>::value &&
-            details::is_uniform_real<
-                typename MapContainer::mapped_type>::value &&
-            std::is_same<Key, details::weight>::value,
-        decltype(std::begin(map_container))>::type
+    static auto get(const MapContainer& map_container) ->
+        typename std::enable_if<
+            details::is_map<MapContainer>::value &&
+                details::is_iterator<
+                    decltype(std::begin(map_container))>::value &&
+                details::is_uniform_real<
+                    typename MapContainer::mapped_type>::value &&
+                std::is_same<Key, details::weight>::value,
+            decltype(std::begin(map_container))>::type
     {
         using MappedType = typename MapContainer::mapped_type;
         using IteratorType = decltype(std::begin(map_container));
@@ -1214,9 +1217,10 @@ class basic_random_local
      * \note If container is empty return std::end( container ) iterator
      */
     template <typename Container>
-    auto get(Container& container) -> typename std::enable_if<
-        details::is_iterator<decltype(std::begin(container))>::value,
-        decltype(std::begin(container))>::type
+    auto get(Container& container) ->
+        typename std::enable_if<
+            details::is_iterator<decltype(std::begin(container))>::value,
+            decltype(std::begin(container))>::type
     {
         return get(std::begin(container), std::end(container));
     }
@@ -1412,12 +1416,14 @@ class basic_random_local
      * equals to sum
      */
     template <typename Key, class MapContainer>
-    auto get(const MapContainer& map_container) -> typename std::enable_if<
-        details::is_map<MapContainer>::value &&
-            details::is_iterator<decltype(std::begin(map_container))>::value &&
-            !std::is_signed<typename MapContainer::mapped_type>::value &&
-            std::is_same<Key, details::weight>::value,
-        decltype(std::begin(map_container))>::type
+    auto get(const MapContainer& map_container) ->
+        typename std::enable_if<
+            details::is_map<MapContainer>::value &&
+                details::is_iterator<
+                    decltype(std::begin(map_container))>::value &&
+                !std::is_signed<typename MapContainer::mapped_type>::value &&
+                std::is_same<Key, details::weight>::value,
+            decltype(std::begin(map_container))>::type
     {
         using MappedType = typename MapContainer::mapped_type;
         using IteratorType = decltype(std::begin(map_container));
@@ -1451,13 +1457,15 @@ class basic_random_local
      * \note return the end iterator if the iterator is empty
      */
     template <typename Key, class MapContainer>
-    auto get(const MapContainer& map_container) -> typename std::enable_if<
-        details::is_map<MapContainer>::value &&
-            details::is_iterator<decltype(std::begin(map_container))>::value &&
-            details::is_uniform_real<
-                typename MapContainer::mapped_type>::value &&
-            std::is_same<Key, details::weight>::value,
-        decltype(std::begin(map_container))>::type
+    auto get(const MapContainer& map_container) ->
+        typename std::enable_if<
+            details::is_map<MapContainer>::value &&
+                details::is_iterator<
+                    decltype(std::begin(map_container))>::value &&
+                details::is_uniform_real<
+                    typename MapContainer::mapped_type>::value &&
+                std::is_same<Key, details::weight>::value,
+            decltype(std::begin(map_container))>::type
     {
         using MappedType = typename MapContainer::mapped_type;
         using IteratorType = decltype(std::begin(map_container));

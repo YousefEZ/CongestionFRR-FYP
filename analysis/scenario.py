@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property, lru_cache, wraps
-from typing import Callable, Concatenate, Optional, ParamSpec
+from typing import Callable, Concatenate, Optional, ParamSpec, override
+
 
 import pydantic
 import rich.progress
+import scapy.packet
 
 from analysis import discovery, statistic
 from analysis.graph import Plot
 from analysis.pcap import Communication, PcapFile
+from analysis.trace_analyzer.dst.reordered_packets import (
+    DroppedRetransmittedPacketCapture,
+    SpuriousOOORTOCapture,
+    SpuriousRetransmissionAnalyzer,
+    hashable_packet,
+)
+from analysis.trace_analyzer.source.packet_capture import PacketCapture
+from analysis.trace_analyzer.source.replayer import TcpSourceReplayer
+from analysis.trace_analyzer.source.socket_state import SocketState
 
 
 P = ParamSpec("P")
@@ -30,6 +41,29 @@ def extract_numerical_value_from_string(string: str) -> float:
             break
     numerical_value = float(string[:index])
     return numerical_value
+
+
+@dataclass
+class RTOWaitingForUnsent(PacketCapture):
+    wait_time: float = field(default_factory=float)
+
+    @override
+    def on_retransmission_timeout(
+        self, packet: scapy.packet.Packet, state: SocketState
+    ) -> None:
+        if state.high_tx_mark < 997_000:
+            self.wait_time += float(packet.time) - state.last_send_timestamp
+
+
+@dataclass
+class RTOWaitTime(PacketCapture):
+    wait_time: float = field(default_factory=float)
+
+    @override
+    def on_retransmission_timeout(
+        self, packet: scapy.packet.Packet, state: SocketState
+    ) -> None:
+        self.wait_time += float(packet.time) - state.last_send_timestamp
 
 
 @dataclass(frozen=True)
@@ -60,6 +94,12 @@ class VariableRun:
             variable: self.pcap(variable, "Receiver", 1) for variable in self.variables
         }
 
+    def debug_filename(self, variable: str) -> str:
+        return f"{self.path}/{variable}/debug.log"
+
+    def cwnd_filename(self, variable: str) -> str:
+        return f"{self.path}/{variable}/n0.dat"
+
     def packet_loss_at(self, variable: str) -> float:
         addresses = self.ip_addresses(variable)
         source_pcap = self.pcap(variable, "TrafficSender0", 1)
@@ -69,6 +109,28 @@ class VariableRun:
             addresses.source
         )
         return _calculate_packet_loss(source_packets, destination_packets)
+
+    def calculate_rto_wait_time_for_unsent(self, variable: str) -> float:
+        print(
+            f"Calculating RTO wait time for unsent packets for {variable} @ seed={self.seed}"
+        )
+        capture = RTOWaitingForUnsent()
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            capture,
+        ).run()
+        return capture.wait_time
+
+    def calculate_rto_wait_time(self, variable: str) -> float:
+        print(f"Calculating RTO wait time for {variable} @ seed={self.seed}")
+        capture = RTOWaitTime()
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            capture,
+        ).run()
+        return capture.wait_time
 
     @lru_cache
     def packets_sent_by_source(self, variable: str) -> int:
@@ -116,10 +178,58 @@ class VariableRun:
             return 0.0
         return (self.udp_packets_rerouted_at(variable) / udp_packets_sent) * 100
 
+    def calculate_dropped_retransmitted_packets(self, variable: str) -> int:
+        print(
+            f"Calculating dropped retransmitted packets for {variable} @ seed={self.seed}"
+        )
+        dropped_packets_capture = DroppedRetransmittedPacketCapture()
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            dropped_packets_capture,
+        ).run()
+        return len(dropped_packets_capture.dropped_packets)
+
     def packets_rerouted_percentage_at(self, variable: str) -> float:
         return (
             self.packets_rerouted_at(variable) / self.packets_sent_by_source(variable)
         ) * 100
+
+    def calculate_longest_number_of_packets_spuriously_retransmitted_before_rto(
+        self, variable: str
+    ) -> int:
+        spur_ooo_packets = SpuriousRetransmissionAnalyzer(
+            self.pcap(variable, "TrafficSender0", 1),
+            self.pcap(variable, "Receiver", 1),
+        ).filter_packets(*self.ip_addresses(variable))
+
+        burst_capture = SpuriousOOORTOCapture(
+            spurious_ooo_packets=[hashable_packet(p) for p in spur_ooo_packets]
+        )
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            burst_capture,
+        ).run()
+
+        return burst_capture.longest_spurious_ooo_burst_count
+
+    def calculate_spurious_retransmissions_from_reordering(self, variable: str) -> int:
+        spur_ooo_packets = SpuriousRetransmissionAnalyzer(
+            self.pcap(variable, "TrafficSender0", 1),
+            self.pcap(variable, "Receiver", 1),
+        ).filter_packets(*self.ip_addresses(variable))
+
+        burst_capture = SpuriousOOORTOCapture(
+            spurious_ooo_packets=[hashable_packet(p) for p in spur_ooo_packets]
+        )
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            burst_capture,
+        ).run()
+
+        return burst_capture.longest_spurious_ooo_burst_count
 
     @cached_property
     def packet_rerouted(self) -> list[Plot]:
@@ -141,6 +251,56 @@ class VariableRun:
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
                     value=self.packets_rerouted_percentage_at(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def spurious_retransmissions(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=len(
+                        SpuriousRetransmissionAnalyzer(
+                            self.pcap(variable, "TrafficSender0", 1),
+                            self.pcap(variable, "Receiver", 1),
+                        ).filter_packets(*self.ip_addresses(variable))
+                    ),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def spurious_retransmissions_from_reordering(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_spurious_retransmissions_from_reordering(
+                        variable
+                    ),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def longest_number_of_packets_spuriously_retransmitted_before_rto(
+        self,
+    ) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_longest_number_of_packets_spuriously_retransmitted_before_rto(
+                        variable
+                    ),
                 )
                 for variable in self.variables
             ),
@@ -236,6 +396,45 @@ class VariableRun:
                     ).number_of_packet_reordering_from_source(
                         self.ip_addresses(variable).source
                     ),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def rto_wait_time_for_unsent(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_rto_wait_time_for_unsent(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def rto_wait_time(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_rto_wait_time(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def dropped_retransmitted_packets(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_dropped_retransmitted_packets(variable),
                 )
                 for variable in self.variables
             ),
@@ -520,6 +719,94 @@ class Scenario:
                     self.runs.items(),
                     console=console,
                     description=f"Calculating Packet Rerouting Percentage for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("spurious_retransmissions")
+    def spurious_retransmissions(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.spurious_retransmissions
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Spurious Retransmissions for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("spurious_retransmission_from_reordering")
+    def spurious_retransmissions_from_reordering(
+        self,
+    ) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.spurious_retransmissions_from_reordering
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Spurious Retransmissions Reordered for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("longest_spurious_retransmissions_before_rto")
+    def longest_number_of_packets_spuriously_retransmitted_before_rto(
+        self,
+    ) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.longest_number_of_packets_spuriously_retransmitted_before_rto
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Spurious Retransmissions Reordered for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("rto_wait_time")
+    def rto_wait_time(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.rto_wait_time
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating RTO Wait Time for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("dropped_retransmitted_packets")
+    def dropped_retransmitted_packets(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.dropped_retransmitted_packets
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Dropped Retransmitted Packets for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("rto_wait_time_for_unsent")
+    def rto_wait_time_for_unsent(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.rto_wait_time_for_unsent
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating RTO Wait Time for Unsent Packets for {self.option}",
                 )
             }
         )

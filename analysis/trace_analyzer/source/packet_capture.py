@@ -33,3 +33,17 @@ class PacketCapture:
 
     def on_new_send(self, packet: scapy.packet.Packet, state: SocketState) -> None:
         logging.debug(f"New transmission detected: {packet.summary()} in state={state}")
+
+    def on_retransmission_timeout(
+        self, packet: scapy.packet.Packet, state: SocketState
+    ) -> None:
+        logging.debug(f"Retransmission timeout in state={state}")
+
+    def on_exit_recovery(self, state: SocketState) -> None:
+        logging.debug(f"Exiting recovery in state={state}")
+
+    def on_enter_recovery(self, state: SocketState) -> None:
+        logging.debug(f"Entering recovery in state={state}")
+
+    def on_scoreboard_add(self, segment: int, state: SocketState) -> None:
+        logging.debug(f"Adding segment to scoreboard: {segment} in state={state}")
