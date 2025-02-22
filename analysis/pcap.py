@@ -18,9 +18,9 @@ class Communication(NamedTuple):
     destination: str
 
 
-TCP_FIN = 0x01
-TCP_SYN = 0x02
-TCP_ACK = 0x10
+TCP_FIN = 0b00_0000_0001
+TCP_SYN = 0b00_0000_0010
+TCP_ACK = 0b00_0001_0000
 
 
 @dataclass(frozen=True)
