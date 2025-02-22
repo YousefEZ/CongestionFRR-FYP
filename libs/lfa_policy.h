@@ -16,7 +16,8 @@ class LFAPolicy;
 class LFAPolicy
 {
   private:
-    std::list<ns3::Ptr<ns3::NetDevice>> m_alternateTargets;
+    std::list<ns3::Ptr<ns3::PointToPointNetDevice>> m_alternateTargets;
+    bool m_switch = false;
 
   public:
     LFAPolicy() = default;
@@ -26,12 +27,27 @@ class LFAPolicy
 
     bool reroute(Ptr<Packet> packet, const Address& dest,
                  uint16_t protocolNumber);
+
+    bool reroutable();
+
 };
 
 template <typename... DEVICES>
 void LFAPolicy::addAlternateTargets(DEVICES&&... devices)
 {
     (m_alternateTargets.push_back(std::forward<DEVICES>(devices)), ...);
+}
+
+
+bool LFAPolicy::reroutable()
+{
+  m_switch = !m_switch; 
+  for (ns3::Ptr<ns3::PointToPointNetDevice> device : m_alternateTargets)
+  {
+    auto queue = device->GetQueue(); 
+    return true; 
+  }
+  return false;
 }
 
 bool LFAPolicy::reroute(Ptr<Packet> packet, const Address& dest,
