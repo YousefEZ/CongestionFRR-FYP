@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, NotRequired, Optional, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    NamedTuple,
+    NotRequired,
+    Optional,
+    Sequence,
+    TypedDict,
+)
 
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import BaseModel
+import matplotlib.colors as mcolors
 
 if TYPE_CHECKING:
     from analysis import statistic
@@ -44,6 +53,77 @@ def _sort_plots(plots: list[Plot]) -> list[Plot]:
     return sorted(plots, key=lambda x: x.variable)
 
 
+def correlation_scatter(
+    stats: tuple[
+        dict[Options, statistic.Statistic], dict[Options, statistic.Statistic]
+    ],
+    labels: Labels,
+    target: Optional[str] = None,
+    styles: Optional[dict[str, Style]] = None,
+    correlation_lines: bool = False,
+) -> None:
+    # show first average statistic on x-axis and second average statistic on y-axis
+
+    figure, axes = plt.subplots(figsize=(10, 6))
+    options = list(stats[0].keys())
+
+    for option, first, second in zip(options, stats[0].values(), stats[1].values()):
+        cmap = plt.get_cmap("viridis")
+        norm = mcolors.Normalize(
+            vmin=first.plots[0].variable, vmax=first.plots[-1].variable
+        )  # Normalize for color scaling
+        for independent_plot_list, dependent_plot_list in zip(
+            first.plots, second.plots
+        ):
+            assert independent_plot_list.variable == dependent_plot_list.variable, (
+                "Variables do not match"
+            )
+            if styles:
+                style = styles.get(option, {})
+                scatter = axes.scatter(
+                    independent_plot_list.data,
+                    dependent_plot_list.data,
+                    label=independent_plot_list.variable,
+                    color=cmap(norm(independent_plot_list.variable)),
+                    **style.get(option, {}),
+                )
+
+            else:
+                scatter = axes.scatter(
+                    independent_plot_list.data,
+                    dependent_plot_list.data,
+                    label=independent_plot_list.variable,
+                    color=cmap(norm(independent_plot_list.variable)),
+                )
+
+            if correlation_lines:
+                colour = scatter.get_facecolor()[0]
+                try:
+                    slope, intercept = np.polyfit(
+                        independent_plot_list.data, dependent_plot_list.data, 1
+                    )
+                    plt.plot(
+                        independent_plot_list.data,
+                        np.poly1d((slope, intercept))(independent_plot_list.data),
+                        color=colour,
+                    )
+                except Exception:
+                    pass
+    axes.set_ylabel(labels["y_axis"])
+    axes.set_xlabel(labels["x_axis"])
+    axes.set_title(labels["title"])
+    axes.legend()
+
+    figure.subplots_adjust(left=0.2)
+
+    if target:
+        figure.savefig(target, dpi=300)
+    else:
+        figure.show()
+
+    figure.clf()
+
+
 def single_point_plot(
     stats: dict[Options, statistic.Statistic],
     axes: Axes,
@@ -70,6 +150,73 @@ def single_point_plot(
             yerr=std_dev,
             label=option,
         )
+
+
+def min_max_plot(
+    stats: dict[Options, statistic.Statistic],
+    labels: Labels,
+    target: Optional[str] = None,
+    styles: Optional[dict[str, Style]] = None,
+) -> None:
+    figure, axes = plt.subplots(figsize=(10, 6))
+
+    for option, statistic in stats.items():
+        plots = _sort_plots(statistic.average)
+        axes.plot(
+            [plot.variable for plot in plots],
+            [plot.value for plot in plots],
+        )
+        if styles:
+            style = styles.get(option, {})
+            axes.errorbar(
+                [plot.variable for plot in plots],
+                [plot.value for plot in plots],
+                xerr=0,
+                yerr=[
+                    [
+                        abs(a.value - s.value)
+                        for a, s in zip(plots, _sort_plots(statistic.minimum))
+                    ],
+                    [
+                        abs(a.value - s.value)
+                        for a, s in zip(plots, _sort_plots(statistic.maximum))
+                    ],
+                ],
+                label=option,
+                fmt="o",
+                **style.get(option, {}),
+            )
+        else:
+            axes.errorbar(
+                [plot.variable for plot in plots],
+                [plot.value for plot in plots],
+                xerr=0,
+                yerr=[
+                    [
+                        abs(a.value - s.value)
+                        for a, s in zip(plots, _sort_plots(statistic.minimum))
+                    ],
+                    [
+                        abs(a.value - s.value)
+                        for a, s in zip(plots, _sort_plots(statistic.maximum))
+                    ],
+                ],
+                label=option,
+                fmt="o",
+            )
+    axes.set_ylabel(labels["y_axis"])
+    axes.set_xlabel(labels["x_axis"])
+    axes.set_title(labels["title"])
+    axes.legend()
+
+    figure.subplots_adjust(left=0.2)
+
+    if target:
+        figure.savefig(target, dpi=300)
+    else:
+        figure.show()
+
+    figure.clf()
 
 
 def plot(
@@ -135,27 +282,15 @@ class SeededPlots(NamedTuple):
 
 
 def cdf(
-    baseline: dict[Seed, list[Plot]],
-    alternative: dict[Seed, list[Plot]],
+    plots: Sequence[np.number] | NDArray[np.number],
     labels: Labels,
     target: Optional[str] = None,
     styles: Optional[dict[str, Style]] = None,
-) -> None:
+):
     figure, axes = plt.subplots(figsize=(10, 6))
 
-    def _take_value(plots: list[Plot]) -> list[float]:
-        return [plot.value for plot in plots]
-
-    differences = np.concatenate(
-        [
-            np.array(_take_value(_sort_plots(baseline[seed])))
-            - np.array(_take_value(_sort_plots(alternative[seed])))
-            for seed in baseline.keys()
-        ]
-    )
-
     axes.hist(
-        differences,
+        plots,
         bins=100,
         density=True,
         histtype="step",
@@ -178,7 +313,21 @@ def cdf(
     figure.clf()
 
 
-def sequence_plots(
-    sender: None,
-    receiver: None,
-) -> None: ...
+def cdf_time_diff(
+    baseline: dict[Seed, list[Plot]],
+    alternative: dict[Seed, list[Plot]],
+    labels: Labels,
+    target: Optional[str] = None,
+    styles: Optional[dict[str, Style]] = None,
+) -> None:
+    def _take_value(plots: list[Plot]) -> list[float]:
+        return [plot.value for plot in plots]
+
+    differences: NDArray[np.float64] = np.concatenate(
+        [
+            np.array(_take_value(_sort_plots(baseline[seed])))
+            - np.array(_take_value(_sort_plots(alternative[seed])))
+            for seed in baseline.keys()
+        ]
+    )
+    cdf(differences, labels, target, styles)
