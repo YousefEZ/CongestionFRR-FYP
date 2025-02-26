@@ -67,6 +67,39 @@ class OOOAnalyzer(PacketAnalyzer):
 
 
 @dataclass(frozen=True)
+class FirstOOOAnalyzer(PacketAnalyzer):
+    sender: PcapFile
+    receiver: PcapFile
+    name: str = "First Out of Order Packet"
+
+    def filter_packets(
+        self, source: str, destination: str
+    ) -> list[scapy.packet.Packet]:
+        received_packets = self.receiver.packets_from(source)
+        sent_packets = self.sender.packets_from(source)
+
+        hashed_received_packets = [
+            hashable_packet(packet) for packet in received_packets
+        ]
+
+        delivered_sent_packets = [
+            packet
+            for packet in sent_packets
+            if hashable_packet(packet) in hashed_received_packets
+        ]
+
+        out_of_order_packets = []
+        for sent_packet, received_packet in zip(
+            delivered_sent_packets, received_packets
+        ):
+            if hashable_packet(sent_packet) != hashable_packet(received_packet):
+                out_of_order_packets.append(sent_packet)
+                break
+
+        return out_of_order_packets
+
+
+@dataclass(frozen=True)
 class PreciseOOOAnalyzer(PacketAnalyzer):
     sender: PcapFile
     receiver: PcapFile
@@ -270,6 +303,36 @@ class TrueBytesInFlightAnalyzer(PacketCapture):
         self.bytes_in_flight.append((state.time, self.current_bytes_in_flight))
 
 
+@dataclass
+class RTOCounterCapture(PacketCapture):
+    rto_count: int = field(default=0)
+
+    @override
+    def on_retransmission_timeout(
+        self, packet: scapy.packet.Packet, state: SocketState
+    ) -> None:
+        self.rto_count += 1
+
+
+@dataclass
+class RecoveryTimeCapture(PacketCapture):
+    recovery_time: float = field(default=0.0)
+    entered_recovery: float = field(default=0.0)
+
+    @override
+    def on_enter_recovery(self, state: SocketState) -> None:
+        assert self.entered_recovery == 0.0, f"Already in recovery, State={state}"
+        self.entered_recovery = state.time
+
+    @override
+    def on_exit_recovery(self, state: SocketState) -> None:
+        assert self.entered_recovery != 0.0, (
+            f"Entered recovery without exiting, State={state}"
+        )
+        self.recovery_time += state.time - self.entered_recovery
+        self.entered_recovery = 0.0
+
+
 def tcp_bytes_in_flight(debug_filename: str) -> list[tuple[float, int]]:
     bytes_in_flight: list[tuple[float, int]] = []
     with open(debug_filename, "r") as debug_file:
@@ -292,3 +355,15 @@ def congestion_windows(filename: str) -> list[tuple[float, int]]:
             if cwnd.strip().isnumeric():
                 congestion_windows.append((float(time), int(cwnd)))
     return congestion_windows
+
+
+def average_congestion_window(windows: list[tuple[float, int]]) -> float:
+    return (
+        sum(
+            [
+                window[1] * (next_window[0] - window[0])
+                for window, next_window in zip(windows, windows[1:])
+            ]
+        )
+        / windows[-1][0]
+    )

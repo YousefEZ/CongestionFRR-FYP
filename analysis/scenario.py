@@ -15,8 +15,12 @@ from analysis.graph import Plot
 from analysis.pcap import Communication, PcapFile
 from analysis.trace_analyzer.dst.reordered_packets import (
     DroppedRetransmittedPacketCapture,
+    RTOCounterCapture,
+    RecoveryTimeCapture,
     SpuriousOOORTOCapture,
     SpuriousRetransmissionAnalyzer,
+    average_congestion_window,
+    congestion_windows,
     hashable_packet,
 )
 from analysis.trace_analyzer.source.packet_capture import PacketCapture
@@ -39,6 +43,8 @@ def extract_numerical_value_from_string(string: str) -> float:
     for index, character in enumerate(string):
         if not character.isdigit() and character != ".":
             break
+    else:
+        return float(string)
     numerical_value = float(string[:index])
     return numerical_value
 
@@ -110,10 +116,16 @@ class VariableRun:
         )
         return _calculate_packet_loss(source_packets, destination_packets)
 
+    def calculate_number_of_rtos(self, variable: str) -> int:
+        capture = RTOCounterCapture()
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            capture,
+        ).run()
+        return capture.rto_count
+
     def calculate_rto_wait_time_for_unsent(self, variable: str) -> float:
-        print(
-            f"Calculating RTO wait time for unsent packets for {variable} @ seed={self.seed}"
-        )
         capture = RTOWaitingForUnsent()
         TcpSourceReplayer(
             self.pcap(variable, "TrafficSender0", 1),
@@ -178,10 +190,21 @@ class VariableRun:
             return 0.0
         return (self.udp_packets_rerouted_at(variable) / udp_packets_sent) * 100
 
-    def calculate_dropped_retransmitted_packets(self, variable: str) -> int:
-        print(
-            f"Calculating dropped retransmitted packets for {variable} @ seed={self.seed}"
+    def calculate_average_cwnd(self, variable: str) -> float:
+        return average_congestion_window(
+            congestion_windows(self.cwnd_filename(variable))
         )
+
+    def calculate_recovery_time(self, variable: str) -> float:
+        capture = RecoveryTimeCapture()
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            capture,
+        ).run()
+        return capture.recovery_time
+
+    def calculate_dropped_retransmitted_packets(self, variable: str) -> int:
         dropped_packets_capture = DroppedRetransmittedPacketCapture()
         TcpSourceReplayer(
             self.pcap(variable, "TrafficSender0", 1),
@@ -269,6 +292,32 @@ class VariableRun:
                             self.pcap(variable, "Receiver", 1),
                         ).filter_packets(*self.ip_addresses(variable))
                     ),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def average_congestion_window(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_average_cwnd(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def rto_count(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_number_of_rtos(variable),
                 )
                 for variable in self.variables
             ),
@@ -409,6 +458,19 @@ class VariableRun:
                 Plot(
                     variable=extract_numerical_value_from_string(variable),
                     value=self.calculate_rto_wait_time_for_unsent(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    @cached_property
+    def recovery_time(self) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=self.calculate_recovery_time(variable),
                 )
                 for variable in self.variables
             ),
@@ -807,6 +869,48 @@ class Scenario:
                     self.runs.items(),
                     console=console,
                     description=f"Calculating RTO Wait Time for Unsent Packets for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("rto_count")
+    def rto_count(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.rto_count
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating RTO Count for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("recovery_time")
+    def recovery_time(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.recovery_time
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Recovery Time for {self.option}",
+                )
+            }
+        )
+
+    @cached_property
+    @_cache_statistic("average_congestion_window")
+    def average_congestion_window(self) -> statistic.Statistic:
+        return statistic.Statistic(
+            {
+                seed: scenario.average_congestion_window
+                for seed, scenario in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating Average Congestion Window for {self.option}",
                 )
             }
         )

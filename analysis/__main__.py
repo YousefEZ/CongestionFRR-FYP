@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import operator
-from typing import Callable, Literal, Optional, ParamSpec, TypeVar
+from typing import Callable, Literal, Optional, ParamSpec, Sequence, TypeVar
 
 import click
 import rich
@@ -435,6 +435,38 @@ def _rto_wait_time_unsent_data(ctx: click.Context) -> None:
     ctx.obj["title"] = "RTO wait time on unsent data"
 
 
+@click.group(name="rto_count")
+@click.pass_context
+def _rto_count(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.rto_count for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "RTO count"
+    ctx.obj["title"] = "RTO count"
+
+
+@click.group(name="recovery_time")
+@click.pass_context
+def _recovery_time(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.recovery_time
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Recovery Time"
+    ctx.obj["title"] = "Recovery Time"
+
+
+@click.group(name="average_congestion_window")
+@click.pass_context
+def _average_congestion_window(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.average_congestion_window
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Average Congestion Window"
+    ctx.obj["title"] = "Average Congestion Window"
+
+
 statistics = (
     _time,
     _loss,
@@ -449,9 +481,12 @@ statistics = (
     _spurious_retransmissions,
     _rto_wait_time,
     _rto_wait_time_unsent_data,
+    _recovery_time,
     _dropped_retransmitted_packets,
     _spurious_retransmissions_reordering,
     _longest_number_spurious_retransmissions_before_rto,
+    _average_congestion_window,
+    _rto_count,
 )
 
 
@@ -612,9 +647,12 @@ def _against(ctx: click.Context) -> None:
 
 
 @multi_command(*statistics, name="scatter")
-@click.option("--line", "-l", is_flag=True, default=False)
+@click.option("--correlation_lines", "-c", is_flag=True, default=False)
+@click.option("--x-line", "-x", type=(str, float), nargs=2, multiple=True)
 @click.pass_context
-def scatter(ctx: click.Context, line: bool) -> None:
+def scatter(
+    ctx: click.Context, correlation_lines: bool, x_line: Sequence[tuple[str, float]]
+) -> None:
     arguments = ctx.obj["arguments"]
     stats = (ctx.obj["statistics"], ctx.obj["against_statistics"])
 
@@ -626,6 +664,8 @@ def scatter(ctx: click.Context, line: bool) -> None:
             title=f"{ctx.obj['title']} against {ctx.obj['against_title']}",
         ),
         target=arguments.output,
+        correlation_lines=correlation_lines,
+        x_lines=x_line,
     )
 
 

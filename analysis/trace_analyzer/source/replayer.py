@@ -68,7 +68,10 @@ class TcpSourceReplayer:
 
     def _handle_new_ack(self, packet: scapy.packet.Packet):
         self.event_handlers.on_ack(packet, self.state)
-        if packet[TCP].ack > self.state.recovery_point:
+        if (
+            packet[TCP].ack > self.state.recovery_point
+            and self.state.recovery_point != 0
+        ):
             self._exit_recovery()
         self._clear_dup_acks()
         self.state.last_acked_seq = packet[TCP].ack
@@ -87,7 +90,8 @@ class TcpSourceReplayer:
         self.state.high_tx_mark = packet[TCP].seq
 
     def _handle_retransmission(self, packet: scapy.packet.Packet):
-        self._enter_recovery(packet, self.state)
+        if not self.state.in_recovery:
+            self._enter_recovery(packet, self.state)
         self.event_handlers.on_retransmission(packet, self.state)
 
     def _enter_recovery(self, packet: scapy.packet.Packet, state: SocketState):
@@ -104,7 +108,9 @@ class TcpSourceReplayer:
 
     def _handle_retransmission_timeout(self, packet: scapy.packet.Packet):
         self.event_handlers.on_retransmission_timeout(packet, self.state)
-        self._exit_recovery()
+        if self.state.in_recovery:
+            # could be not enough DUP ACKs causing rto to expire without recovery
+            self._exit_recovery()
 
     def _handle_send(self, packet: scapy.packet.Packet) -> None:
         if Raw not in packet:

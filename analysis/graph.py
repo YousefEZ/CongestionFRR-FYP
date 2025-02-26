@@ -61,17 +61,22 @@ def correlation_scatter(
     target: Optional[str] = None,
     styles: Optional[dict[str, Style]] = None,
     correlation_lines: bool = False,
+    x_lines: Sequence[tuple[str, float]] = [],
 ) -> None:
     # show first average statistic on x-axis and second average statistic on y-axis
-
     figure, axes = plt.subplots(figsize=(10, 6))
     options = list(stats[0].keys())
 
+    for label, value in x_lines:
+        axes.axvline(x=value, ymax=axes.get_ylim()[1], label=label)
     for option, first, second in zip(options, stats[0].values(), stats[1].values()):
         cmap = plt.get_cmap("viridis")
         norm = mcolors.Normalize(
             vmin=first.plots[0].variable, vmax=first.plots[-1].variable
         )  # Normalize for color scaling
+        max_x = max([plot.data for plot in first.plots])
+        min_x = min([plot.data for plot in first.plots])
+        x_extended = np.linspace(min_x, max_x, 100)
         for independent_plot_list, dependent_plot_list in zip(
             first.plots, second.plots
         ):
@@ -83,7 +88,7 @@ def correlation_scatter(
                 scatter = axes.scatter(
                     independent_plot_list.data,
                     dependent_plot_list.data,
-                    label=independent_plot_list.variable,
+                    label=f"{option}: {independent_plot_list.variable}",
                     color=cmap(norm(independent_plot_list.variable)),
                     **style.get(option, {}),
                 )
@@ -92,7 +97,7 @@ def correlation_scatter(
                 scatter = axes.scatter(
                     independent_plot_list.data,
                     dependent_plot_list.data,
-                    label=independent_plot_list.variable,
+                    label=f"{option}: {independent_plot_list.variable}",
                     color=cmap(norm(independent_plot_list.variable)),
                 )
 
@@ -103,12 +108,13 @@ def correlation_scatter(
                         independent_plot_list.data, dependent_plot_list.data, 1
                     )
                     plt.plot(
-                        independent_plot_list.data,
-                        np.poly1d((slope, intercept))(independent_plot_list.data),
+                        x_extended,
+                        np.poly1d((slope, intercept))(x_extended),
                         color=colour,
                     )
                 except Exception:
                     pass
+
     axes.set_ylabel(labels["y_axis"])
     axes.set_xlabel(labels["x_axis"])
     axes.set_title(labels["title"])
