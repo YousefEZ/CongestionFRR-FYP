@@ -143,7 +143,7 @@ std::string delay_bottleneck = "2ms";
 std::string delay_access = "2ms";
 std::string delay_alternate = "1ms";
 std::string delay_destination = "2ms";
-std::string bandwidth_alternate = "3Mbps";
+std::string bandwidth_alternate = "2Mbps";
 
 std::string bandwidth_destination = "1000Mbps";
 

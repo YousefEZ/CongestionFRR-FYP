@@ -6,11 +6,25 @@ services:
       - ./src:/usr/workspace/ns-allinone-3.43/ns-3.43/user_src
       - ./libs:/usr/workspace/ns-allinone-3.43/ns-3.43/libs
       - ./traces:/usr/workspace/ns-allinone-3.43/ns-3.43/traces
+      - ./run_configs:/usr/workspace/ns-allinone-3.43/ns-3.43/run_configs
       - ./single_band_experiment.sh:/usr/workspace/ns-allinone-3.43/ns-3.43/run_ns3.sh # Mounting run_ns3.sh
     ulimits:
       nofile:
         soft: 1024000
         hard: 1024000
+  shell:
+    build: . 
+    container_name: shell 
+    volumes:
+      - ./src:/usr/workspace/ns-allinone-3.43/ns-3.43/user_src
+      - ./libs:/usr/workspace/ns-allinone-3.43/ns-3.43/libs
+      - ./traces:/usr/workspace/ns-allinone-3.43/ns-3.43/traces
+      - ./run_configs:/usr/workspace/ns-allinone-3.43/ns-3.43/run_configs
+      - ./analysis:/usr/workspace/ns-allinone-3.43/ns-3.43/analysis
+      - ./single_band_experiment.sh:/usr/workspace/ns-allinone-3.43/ns-3.43/run_ns3.sh # Mounting run_ns3.sh
+    stdin_open: true  # Keeps STDIN open for interactive mode
+    tty: true
+    command: ["./setup.sh"]
   test:
     build: .
     volumes:

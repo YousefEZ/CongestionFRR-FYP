@@ -39,16 +39,16 @@ one_band_experiment()
 # vary the bandwidth from 3.0Mbps to 8.0Mbps in increments of 1Mbps
 
 # vary the alternate_bandwidth_vals from 0.5Mbps to 3.0Mbps in increments of 0.2Mbps 
-alterate_bandwidth_vals=("0.5Mbps" "1.0Mbps" "1.5Mbps" "2.0Mbps" "2.5Mbps" "3.0Mbps") 
-for bandwidth_val in "${alterate_bandwidth_vals[@]}"; do
-  echo "Bandwidth Alternate value: $bandwidth_val"
-  one_band_experiment "bandwidth_alternate" "$bandwidth_val" "50" 
-done
+#alterate_bandwidth_vals=("0.5Mbps" "1.0Mbps" "1.5Mbps" "2.0Mbps" "2.5Mbps" "3.0Mbps") 
+#for bandwidth_val in "${alterate_bandwidth_vals[@]}"; do
+#  echo "Bandwidth Alternate value: $bandwidth_val"
+#  one_band_experiment "bandwidth_alternate" "$bandwidth_val" "50" 
+#done
 
 alternate_delay_vals=("1ms" "5ms" "10ms" "50ms" "100ms" "200ms" "300ms" "400ms" "500ms") # "600ms" "700ms" "800ms" "900ms" "1000ms")
 for delay_val in "${alternate_delay_vals[@]}"; do
   echo "Delay Alternate value: $delay_val"
-  one_band_experiment "delay_alternate" "$delay_val" "50" 
+  # one_band_experiment "delay_alternate" "$delay_val" "50" 
 done
 
 #bandwidth_vals=("3.0Mbps" "4.0Mbps" "5.0Mbps" "6.0Mbps" "7.0Mbps" "8.0Mbps")
