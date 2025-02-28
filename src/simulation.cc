@@ -43,7 +43,7 @@ std::string delay_destination = "2ms";
 uint32_t tcpSegmentSize = 1446;
 int number_of_tcp_senders = 1;
 int tcp_bytes = 1000000;
-float tcp_start = 0.0; 
+float tcp_start = 0.0;
 float tcp_end = 15.0;
 
 bool enable_udp = false;
@@ -115,8 +115,8 @@ void setAlternateTarget(const NetDeviceContainer& devices,
 // Function to trace change in cwnd at n0
 static void CwndChange(uint32_t oldCwnd, uint32_t newCwnd)
 {
-    fPlotCwnd << Simulator::Now().GetSeconds() << " " << newCwnd / tcpSegmentSize
-              << std::endl;
+    fPlotCwnd << Simulator::Now().GetSeconds() << " "
+              << newCwnd / tcpSegmentSize << std::endl;
 }
 
 // Function to trace change in cwnd at n0
@@ -163,8 +163,6 @@ void TraceRTO(uint32_t node, uint32_t cwndWindow,
                                   RTOTrace);
 }
 
-
-
 void SetupTCPConfig()
 {
     Config::SetDefault(
@@ -188,18 +186,18 @@ int main(int argc, char* argv[])
     CommandLine cmd;
     cmd.AddValue("bandwidth_primary", "Bandwidth primary", bandwidth_primary);
     cmd.AddValue("bandwidth_tcp", "Bandwidth Access", bandwidth_tcp);
-    cmd.AddValue("bandwidth_udp", "Bandwidth UDP Access",
-                 bandwidth_udp);
+    cmd.AddValue("bandwidth_udp", "Bandwidth UDP Access", bandwidth_udp);
     cmd.AddValue("bandwidth_alternate", "Bandwidth Alternate",
                  bandwidth_alternate);
-    cmd.AddValue("bandwidth_destination", "Bandwidth Destination", bandwidth_destination); 
-    
+    cmd.AddValue("bandwidth_destination", "Bandwidth Destination",
+                 bandwidth_destination);
+
     cmd.AddValue("delay_primary", "Delay Bottleneck", delay_primary);
     cmd.AddValue("delay_tcp", "Delay TCP Access", delay_tcp);
     cmd.AddValue("delay_udp", "Delay UDP Access", delay_udp);
     cmd.AddValue("delay_alternate", "Delay Alternate", delay_alternate);
     cmd.AddValue("delay_destination", "Delay Destination", delay_destination);
-    
+
     cmd.AddValue("tcp_segment_size", "TCP Segment Size", tcpSegmentSize);
     cmd.AddValue("tcp_senders", "Number of TCP Senders", number_of_tcp_senders);
     cmd.AddValue("tcp_bytes", "Amount of TCP bytes", tcp_bytes);
@@ -210,7 +208,7 @@ int main(int argc, char* argv[])
     cmd.AddValue("udp_start_time", "UDP start time", udp_start);
     cmd.AddValue("udp_segment_size", "UDP segment size", udpSegmentSize);
     cmd.AddValue("udp_end_time", "UDP End", udp_end);
-    
+
     cmd.AddValue("policy_threshold", "Congestion policy threshold",
                  cong_threshold);
     cmd.AddValue("dir", "Traces directory", dir);
@@ -392,8 +390,7 @@ int main(int argc, char* argv[])
 
     // Configure PointToPoint link for congestion link
     PointToPointHelper p2p_congestion;
-    p2p_congestion.SetDeviceAttribute("DataRate",
-                                      StringValue(bandwidth_udp));
+    p2p_congestion.SetDeviceAttribute("DataRate", StringValue(bandwidth_udp));
     p2p_congestion.SetChannelAttribute("Delay", StringValue(delay_udp));
     // Set the custom queue for the device
     p2p_congestion.SetQueue("ns3::DropTailQueue<Packet>");
