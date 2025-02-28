@@ -1,23 +1,72 @@
 from dataclasses import dataclass
 import os
-from typing import Generator
-from itertools import product
+from typing import Generator, Iterable, Optional
+from itertools import chain, product
+import shutil
+from functools import reduce
+import operator
 
 from mpire.pool import WorkerPool
 from pydantic import BaseModel
 
-NUM_PROCESSES = 4
 
-
-class BaseSettings(BaseModel):
+class Settings(BaseModel):
     bandwidth_primary: str
     bandwidth_alternate: str
+    bandwidth_udp: str
+    bandwidth_tcp: str
+    bandwidth_destination: str
+
     delay_primary: str
     delay_alternate: str
+    delay_udp: str
+    delay_tcp: str
+    delay_destination: str
+
     tcp_senders: int
     tcp_bytes: int
+    tcp_segment_size: int
+    tcp_start_time: float
+    tcp_end_time: float
+
     udp_start_time: float
     udp_segment_size: int
+    udp_end_time: float
+
+    policy_threshold: int
+
+    def options(self, exclude: Iterable[str]) -> dict[str, str]:
+        return {
+            key: value for key, value in self.model_dump().items() if key not in exclude
+        }
+
+
+class OverwrittenSetting(BaseModel):
+    base_settings: str
+
+    for key in Settings.__annotations__:
+        locals()[key] = None
+        del key
+
+    __annotations__.update(
+        {key: Optional[value] for key, value in Settings.__annotations__.items()}
+    )
+
+    def fetch_settings(self) -> Settings:
+        with open(self.base_settings) as file:
+            return Settings.model_validate_json(file.read())
+
+    def apply(self) -> Settings:
+        settings = self.fetch_settings()
+        overwritten_settings = self.model_dump()
+        return Settings(
+            **{
+                key: overwritten_settings[key]
+                if overwritten_settings[key] is not None
+                else getattr(settings, key)
+                for key in settings.model_dump().keys()
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -30,6 +79,7 @@ class Command:
     run: int
     condition_label: str
     variable_label: str
+    settings: Settings
 
     @property
     def directory(self) -> str:
@@ -43,12 +93,14 @@ class Command:
 
     def generate_dir(self) -> None:
         if os.path.exists(self.directory):
-            os.rmdir(self.directory)
+            shutil.rmtree(self.directory)
         os.makedirs(self.directory)
 
     def options(self) -> list[str]:
         command_options = []
-        for key, value in self.variables.items():
+        for key, value in chain(
+            self.settings.options(self.variables).items(), self.variables.items()
+        ):
             command_options.append(f"--{key}={value}")
 
         command_options.append(f"--dir={self.directory}/")
@@ -57,13 +109,14 @@ class Command:
 
         if self.fast_rerouting:
             command_options.append("--enable-rerouting")
+            command_options.append("--policy_threshold=50")
         if self.congestion:
             command_options.append("--enable-udp")
 
         return command_options
 
     def generate(self) -> str:
-        return 'NS_LOG="" ./ns3 run "scratch/simulation.cc {}" 2> {}/debug.log'.format(
+        return 'NS_LOG="" ./ns3 run "scratch/simulation.cc {}" 2> {}/debug.log > /dev/null'.format(
             " ".join(self.options()), self.directory
         )
 
@@ -83,6 +136,7 @@ class Variable(BaseModel):
 
 
 class Configuration(BaseModel):
+    overwrite_settings: OverwrittenSetting
     variables: list[Variable]
     directory: str
     conditions: dict[str, Conditions]
@@ -95,8 +149,8 @@ class Configuration(BaseModel):
         )
 
         for combination in product_combinations:
-            for run in range(self.number_of_runs):
-                for option, condition in self.conditions.items():
+            for option, condition in self.conditions.items():
+                for run in range(self.number_of_runs):
                     yield Command(
                         fast_rerouting=condition.fast_rerouting,
                         congestion=condition.congestion,
@@ -113,35 +167,24 @@ class Configuration(BaseModel):
                         variable_label="_".join(
                             variable.name for variable in self.variables
                         ),
+                        settings=self.overwrite_settings.apply(),
                     )
+
+    def __len__(self) -> int:
+        return (
+            reduce(operator.mul, (len(variable.values) for variable in self.variables))
+            * self.number_of_runs
+            * len(self.conditions)
+        )
 
 
 def run_experiments(
     configuration: Configuration,
 ) -> None:
-    with WorkerPool(n_jobs=NUM_PROCESSES) as pool:
+    with WorkerPool() as pool:
         pool.map(
             Command.execute,
             configuration.commands(),
+            iterable_len=len(configuration),
             progress_bar=True,
         )
-
-
-if __name__ == "__main__":
-    variables = [
-        Variable(name="delay_alternate", values=[f"{i}ms" for i in range(10, 101, 10)]),
-    ]
-    directory = "results"
-    conditions = {"congested": Conditions(fast_rerouting=False, congestion=True)}
-    runs = 10
-    seed = 42
-
-    run_experiments(
-        Configuration(
-            variables=variables,
-            directory=directory,
-            conditions=conditions,
-            seed=seed,
-            number_of_runs=runs,
-        )
-    )
