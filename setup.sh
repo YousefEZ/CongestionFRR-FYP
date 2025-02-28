@@ -2,7 +2,6 @@
 cp user_src/* scratch/
 
 poetry install 
-poetry shell
 ./ns3 build
 
 if [ $? -ne 0 ]; then
