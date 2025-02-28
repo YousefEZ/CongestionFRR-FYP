@@ -27,3 +27,6 @@ mypy = "^1.13.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+simulate = "analysis.__main__:_simulate"
