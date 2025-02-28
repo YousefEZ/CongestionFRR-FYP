@@ -24,7 +24,6 @@ services:
       - ./single_band_experiment.sh:/usr/workspace/ns-allinone-3.43/ns-3.43/run_ns3.sh # Mounting run_ns3.sh
     stdin_open: true  # Keeps STDIN open for interactive mode
     tty: true
-    command: ["./setup.sh"]
   test:
     build: .
     volumes:
