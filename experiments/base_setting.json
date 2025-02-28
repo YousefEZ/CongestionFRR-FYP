@@ -1,0 +1,25 @@
+{
+  "bandwidth_primary": "3Mbps",
+  "bandwidth_tcp": "3Mbps",
+  "bandwidth_udp": "3Mbps",
+  "bandwidth_alternate": "3Mbps",
+  "bandwidth_destination": "1000Mbps",
+  
+  "delay_primary": "2ms",
+  "delay_tcp": "2ms",
+  "delay_udp": "2ms",
+  "delay_alternate": "1ms",
+  "delay_destination": "2ms",
+  
+  "tcp_segment_size": 1446, 
+  "tcp_bytes": 1000000, 
+  "tcp_start_time": 0.0,
+  "tcp_end_time": 15.0,
+  "tcp_senders": 1, 
+  
+  "udp_segment_size": 1250,
+  "udp_start_time": 0.175,
+  "udp_end_time": 15.0,
+
+  "policy_threshold": 50
+}
