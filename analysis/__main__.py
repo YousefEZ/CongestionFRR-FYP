@@ -7,6 +7,7 @@ import rich
 import rich.table
 
 from analysis import discovery, graph, scenario
+from analysis.generator import Configuration, run_experiments
 from analysis.sequence_plot import (
     Packets,
     build_conditions,
@@ -42,6 +43,25 @@ T = TypeVar("T")
 
 GraphTypes = Literal["plot", "cdf"]
 graph_types: list[GraphTypes] = ["plot", "cdf"]
+
+
+@click.group(name="analysis")
+def _analysis() -> None: ...
+
+
+@click.command("simulate")
+@click.option(
+    "--config",
+    "-c",
+    "config_filename",
+    help="Path to the configuration",
+    type=str,
+    required=True,
+)
+def _simulate(config_filename: str) -> None:
+    with open(config_filename, "r") as file:
+        configuration = Configuration.model_validate_json(file.read())
+        run_experiments(configuration)
 
 
 def multi_command(
@@ -208,10 +228,6 @@ def _sequence(
         )
 
     plot_sequence(*packet_lists)
-
-
-@click.group(name="analysis")
-def _analysis() -> None: ...
 
 
 @click.group(name="graph")
@@ -637,6 +653,7 @@ for statistic in statistics:
 _analysis.add_command(_graph)
 _analysis.add_command(_sequence)
 _analysis.add_command(_bytesInFlight)
+_analysis.add_command(_simulate)
 
 if __name__ == "__main__":
     _analysis()

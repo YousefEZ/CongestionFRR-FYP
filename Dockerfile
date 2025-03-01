@@ -20,7 +20,7 @@ RUN apt-get install -y python3-scapy python3-hypothesis python3-pytest
 RUN apt-get install -y ccache gdb valgrind
 
 # python dependencies
-RUN apt install -y python3-dev pkg-config python3-setuptools
+RUN apt install -y python3-dev pkg-config python3-setuptools python3-poetry
 # RUN python3 -m pip install cppyy==2.4.2
 
 # Download the tar file
@@ -41,10 +41,12 @@ RUN ./ns3 configure --build-profile=debug --out=build/debug
 RUN ./ns3 build 
 
 # Copy the script into the container
-COPY entrypoint.sh /usr/workspace/ns-allinone-3.43/ns-3.43/entrypoint.sh
+COPY setup.sh /usr/workspace/ns-allinone-3.43/ns-3.43/setup.sh
 
-# Make the script executable
-RUN chmod +x /usr/workspace/ns-allinone-3.43/ns-3.43/entrypoint.sh
+COPY pyproject.toml /usr/workspace/ns-allinone-3.43/ns-3.43/pyproject.toml
 
-# Set the script as the entrypoint
-ENTRYPOINT ["/usr/workspace/ns-allinone-3.43/ns-3.43/entrypoint.sh"]
+RUN poetry install --directory=/usr/workspace/ns-allinone-3.43/ns-3.43/ --no-root 
+
+RUN chmod u+x /usr/workspace/ns-allinone-3.43/ns-3.43/setup.sh
+
+ENTRYPOINT ["/usr/workspace/ns-allinone-3.43/ns-3.43/setup.sh"]

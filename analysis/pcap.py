@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import pyshark
 import scapy.packet
@@ -55,7 +55,7 @@ class PcapFile:
     def number_of_packets_from_source(self, source: str) -> int:
         return len(self.packets_from(source))
 
-    def flow_completion_time(self, source: str, destination: str) -> Optional[float]:
+    def flow_completion_time(self, source: str, destination: str) -> float:
         for packet in self.tcp_packets:
             if (
                 packet.getlayer("IP").src == destination
@@ -64,7 +64,7 @@ class PcapFile:
                 and packet[TCP].flags & TCP_ACK
             ):
                 return float(packet.time)
-        return None
+        assert False, "Flow completion time not found"
 
     def number_of_packet_reordering_from_source(self, source: str) -> int:
         file_capture = pyshark.FileCapture(
