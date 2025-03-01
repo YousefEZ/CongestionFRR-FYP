@@ -231,237 +231,91 @@ class VariableRun:
 
         return burst_capture.longest_spurious_ooo_burst_count
 
-    @cached_property
+    def _map_plots(self, method: Callable[[str], float]) -> list[Plot]:
+        return sorted(
+            (
+                Plot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=method(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
     def packet_rerouted(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.packets_rerouted_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.packets_rerouted_at)
 
-    @cached_property
     def packet_rerouted_percentage(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.packets_rerouted_percentage_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.packets_rerouted_percentage_at)
 
-    @cached_property
     def spurious_retransmissions(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=len(
-                        SpuriousRetransmissionAnalyzer(
-                            self.pcap(variable, "TrafficSender0", 1),
-                            self.pcap(variable, "Receiver", 1),
-                        ).filter_packets(*self.ip_addresses(variable))
-                    ),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
+        return self._map_plots(
+            lambda variable: len(
+                SpuriousRetransmissionAnalyzer(
+                    self.pcap(variable, "TrafficSender0", 1),
+                    self.pcap(variable, "Receiver", 1),
+                ).filter_packets(*self.ip_addresses(variable))
+            )
         )
 
-    @cached_property
     def spurious_retransmissions_from_reordering(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.calculate_spurious_retransmissions_from_reordering(
-                        variable
-                    ),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.calculate_spurious_retransmissions_from_reordering)
 
-    @cached_property
     def longest_number_of_packets_spuriously_retransmitted_before_rto(
         self,
     ) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.calculate_longest_number_of_packets_spuriously_retransmitted_before_rto(
-                        variable
-                    ),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
+        return self._map_plots(
+            self.calculate_longest_number_of_packets_spuriously_retransmitted_before_rto
         )
 
-    @cached_property
     def packet_loss(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.packet_loss_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.packet_loss_at)
 
-    @cached_property
     def packets_lost(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.packets_lost_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.packets_lost_at)
 
-    @cached_property
     def udp_lost(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.udp_packets_lost_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.udp_packets_lost_at)
 
-    @cached_property
     def udp_loss(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.udp_packets_loss_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.udp_packets_loss_at)
 
-    @cached_property
     def udp_rerouted(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.udp_packets_rerouted_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.udp_packets_rerouted_at)
 
-    @cached_property
     def udp_rerouted_percentage(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.udp_packets_rerouted_percentage_at(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.udp_packets_rerouted_percentage_at)
 
-    @cached_property
     def packet_reordering(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.pcap(
-                        variable, "Receiver", 1
-                    ).number_of_packet_reordering_from_source(
-                        self.ip_addresses(variable).source
-                    ),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
+        return self._map_plots(
+            lambda variable: self.pcap(
+                variable, "Receiver", 1
+            ).number_of_packet_reordering_from_source(
+                self.ip_addresses(variable).source
+            )
         )
 
-    @cached_property
     def rto_wait_time_for_unsent(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.calculate_rto_wait_time_for_unsent(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.calculate_rto_wait_time_for_unsent)
 
-    @cached_property
     def rto_wait_time(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.calculate_rto_wait_time(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.calculate_rto_wait_time)
 
-    @cached_property
     def dropped_retransmitted_packets(self) -> list[Plot]:
-        return sorted(
-            (
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=self.calculate_dropped_retransmitted_packets(variable),
-                )
-                for variable in self.variables
-            ),
-            key=lambda plot: plot.variable,
-        )
+        return self._map_plots(self.calculate_dropped_retransmitted_packets)
 
     @lru_cache
     def ip_addresses(self, variable: str) -> Communication:
         # TODO: replace with a method to handle multiple flows
         return self.pcap(variable, "TrafficSender0", 1).first_addresses
 
-    @cached_property
-    def plots(self) -> list[Plot]:
-        plots = []
-        for variable in self.variables:
-            pcap = self.pcap(variable, "Receiver", 1)
-            completion_time = pcap.flow_completion_time(*self.ip_addresses(variable))
-            assert completion_time, (
-                f"Failed to calculate completion time for {variable}"
+    def time(self) -> list[Plot]:
+        return self._map_plots(
+            lambda variable: self.pcap(variable, "Receiver", 1).flow_completion_time(
+                *self.ip_addresses(variable)
             )
-            plots.append(
-                Plot(
-                    variable=extract_numerical_value_from_string(variable),
-                    value=completion_time,
-                )
-            )
-        return sorted(plots, key=lambda plot: plot.variable)
+        )
 
 
 def _cache_statistic(
@@ -583,230 +437,102 @@ class Scenario:
             for seed in self.seeds
         }
 
-    @cached_property
-    @_cache_statistic("times")
-    def times(self) -> statistic.Statistic:
+    def _map_statistic(
+        self, method: Callable[[VariableRun], list[Plot]]
+    ) -> statistic.Statistic:
         return statistic.Statistic(
             {
-                seed: scenario.plots
-                for seed, scenario in rich.progress.track(
+                seed: method(run)
+                for seed, run in rich.progress.track(
                     self.runs.items(),
                     console=console,
-                    description=f"Calculating Times for {self.option}",
+                    description=f"Calculating {method.__name__} for {self.option}",
                 )
             }
         )
+
+    @cached_property
+    @_cache_statistic("times")
+    def times(self) -> statistic.Statistic:
+        return self._map_statistic(VariableRun.time)
 
     @cached_property
     @_cache_statistic("packets_lost")
     def packets_lost(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.packets_lost
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Packets Lost for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.packets_lost)
 
     @cached_property
     @_cache_statistic("udp_loss")
     def udp_loss(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.udp_loss
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating UDP Lost for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.udp_lost)
 
     @cached_property
     @_cache_statistic("_udp_rerouted")
     def udp_rerouted(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.udp_rerouted
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating UDP Rerouted for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.udp_rerouted)
 
     @cached_property
     @_cache_statistic("_udp_rerouted_percentage")
     def udp_rerouted_percentage(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.udp_rerouted_percentage
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating UDP Rerouted Percentage for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.udp_rerouted_percentage)
 
     @cached_property
     @_cache_statistic("udp_lost")
     def udp_lost(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.udp_lost
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating UDP Lost for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.udp_loss)
 
     @cached_property
     @_cache_statistic("packet_loss")
     def packet_loss(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.packet_loss
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Packet Loss for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.packet_loss)
 
     @cached_property
     @_cache_statistic("reordering")
     def reordering(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.packet_reordering
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Packet Reordering for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.packet_reordering)
 
     @cached_property
     @_cache_statistic("rerouted")
     def rerouted(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.packet_rerouted
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Packet Rerouting for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.packet_rerouted)
 
     @cached_property
     @_cache_statistic("rerouted_percentage")
     def rerouted_percentage(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.packet_rerouted_percentage
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Packet Rerouting Percentage for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.packet_rerouted_percentage)
 
     @cached_property
     @_cache_statistic("spurious_retransmissions")
     def spurious_retransmissions(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.spurious_retransmissions
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Spurious Retransmissions for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.spurious_retransmissions)
 
     @cached_property
     @_cache_statistic("spurious_retransmission_from_reordering")
     def spurious_retransmissions_from_reordering(
         self,
     ) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.spurious_retransmissions_from_reordering
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Spurious Retransmissions Reordered for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.spurious_retransmissions_from_reordering)
 
     @cached_property
     @_cache_statistic("longest_spurious_retransmissions_before_rto")
     def longest_number_of_packets_spuriously_retransmitted_before_rto(
         self,
     ) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.longest_number_of_packets_spuriously_retransmitted_before_rto
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Spurious Retransmissions Reordered for {self.option}",
-                )
-            }
+        return self._map_statistic(
+            VariableRun.longest_number_of_packets_spuriously_retransmitted_before_rto
         )
 
     @cached_property
     @_cache_statistic("rto_wait_time")
     def rto_wait_time(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.rto_wait_time
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating RTO Wait Time for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.rto_wait_time)
 
     @cached_property
     @_cache_statistic("dropped_retransmitted_packets")
     def dropped_retransmitted_packets(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.dropped_retransmitted_packets
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating Dropped Retransmitted Packets for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.dropped_retransmitted_packets)
 
     @cached_property
     @_cache_statistic("rto_wait_time_for_unsent")
     def rto_wait_time_for_unsent(self) -> statistic.Statistic:
-        return statistic.Statistic(
-            {
-                seed: scenario.rto_wait_time_for_unsent
-                for seed, scenario in rich.progress.track(
-                    self.runs.items(),
-                    console=console,
-                    description=f"Calculating RTO Wait Time for Unsent Packets for {self.option}",
-                )
-            }
-        )
+        return self._map_statistic(VariableRun.rto_wait_time_for_unsent)
