@@ -1,6 +1,6 @@
 {
   "overwrite_settings":{
-    "base_settings": "run_configs/base_setting.json", 
+    "base_settings": "experiments/base_setting.json", 
     "bandwidth_alternate": "2Mbps"
   }, 
   "variables": [
