@@ -53,6 +53,9 @@ float udp_end = 15.0;
 
 std::string dir = "";
 
+std::string traffic_queue_size = "4p";
+std::string default_queue_size = "4p";
+
 bool enable_rerouting = false;
 bool enable_router_pcap = false;
 bool enable_udp_pcap = false;
@@ -235,6 +238,10 @@ int main(int argc, char* argv[])
                  cong_threshold);
     cmd.AddValue("dir", "Traces directory", dir);
     cmd.AddValue("seed", "The random seed", seed);
+   
+    cmd.AddValue("traffic_queue_size", "Traffic queue size", traffic_queue_size);
+    cmd.AddValue("default_queue_size", "Default queue size", default_queue_size);
+
     cmd.AddValue("enable-rerouting", "enable fast rerouting on congestion",
                  enable_rerouting);
     cmd.AddValue("enable-router-pcap", "enable pcap on routers", enable_router_pcap);
@@ -311,7 +318,8 @@ int main(int argc, char* argv[])
     p2p_traffic.SetDeviceAttribute("DataRate", StringValue(bandwidth_tcp));
     p2p_traffic.SetChannelAttribute("Delay", StringValue(delay_tcp));
     // Set the custom queue for the device
-    p2p_traffic.SetQueue("ns3::DropTailQueue<Packet>");
+    p2p_traffic.SetQueue("ns3::DropTailQueue<Packet>", "MaxSize",
+                         StringValue(traffic_queue_size));
     // Install devices and channels between nodes
 
     PointToPointHelper p2p_destination;
@@ -324,9 +332,9 @@ int main(int argc, char* argv[])
     p2p_destination.SetQueue("ns3::DropTailQueue<Packet>");
 
     Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize",
-                       StringValue("4p"));
+                       StringValue(default_queue_size));
     Config::SetDefault(SimulationQueue::getQueueString() + "::MaxSize",
-                       StringValue("4p"));
+                       StringValue(default_queue_size));
 
     PointToPointHelper p2p_alternate;
     p2p_alternate.SetDeviceAttribute("DataRate",

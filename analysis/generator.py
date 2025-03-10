@@ -44,6 +44,9 @@ class Settings(BaseModel):
     udp_off_time_variance: float
     udp_off_time_bound: float
 
+    traffic_queue_size: str
+    default_queue_size: str
+
     policy_threshold: int
 
     def options(self, exclude: Iterable[str]) -> dict[str, str]:
