@@ -21,5 +21,16 @@
   "udp_start_time": 0.175,
   "udp_end_time": 15.0,
 
+  "udp_on_time_mean": 0.5,
+  "udp_on_time_variance": 0.1,
+  "udp_on_time_bound": 0.25,
+
+  "udp_off_time_mean": 0.5,
+  "udp_off_time_variance": 0.1,
+  "udp_off_time_bound": 0.1,
+  
+  "traffic_queue_size": "4p",
+  "default_queue_size": "4p",
+
   "policy_threshold": 50
 }
