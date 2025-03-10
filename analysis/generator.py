@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 import os
 from typing import Generator, Iterable, Optional
@@ -7,10 +9,11 @@ from functools import reduce
 import operator
 
 from mpire.pool import WorkerPool
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     bandwidth_primary: str
     bandwidth_alternate: str
     bandwidth_udp: str
@@ -33,6 +36,14 @@ class Settings(BaseModel):
     udp_segment_size: int
     udp_end_time: float
 
+    udp_on_time_mean: float
+    udp_on_time_variance: float
+    udp_on_time_bound: float
+
+    udp_off_time_mean: float
+    udp_off_time_variance: float
+    udp_off_time_bound: float
+
     policy_threshold: int
 
     def options(self, exclude: Iterable[str]) -> dict[str, str]:
@@ -42,6 +53,7 @@ class Settings(BaseModel):
 
 
 class OverwrittenSetting(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     base_settings: str
 
     for key in Settings.__annotations__:
@@ -71,8 +83,7 @@ class OverwrittenSetting(BaseModel):
 
 @dataclass(frozen=True)
 class Command:
-    fast_rerouting: bool
-    congestion: bool
+    conditions: Conditions
     main_directory: str
     variables: dict[str, str]
     seed: int
@@ -107,11 +118,18 @@ class Command:
         command_options.append(f"--seed={self.seed}")
         command_options.append(f"--run={self.run}")
 
-        if self.fast_rerouting:
+        if self.conditions.fast_rerouting:
             command_options.append("--enable-rerouting")
             command_options.append("--policy_threshold=50")
-        if self.congestion:
+        if self.conditions.congestion:
             command_options.append("--enable-udp")
+
+        if self.conditions.enable_router_pcap:
+            command_options.append("--enable-router-pcap")
+        if self.conditions.enable_udp_pcap:
+            command_options.append("--enable-udp-pcap")
+        if self.conditions.enable_logging:
+            command_options.append("--enable-logging")
 
         return command_options
 
@@ -128,6 +146,9 @@ class Command:
 class Conditions(BaseModel):
     fast_rerouting: bool
     congestion: bool
+    enable_router_pcap: bool = False
+    enable_udp_pcap: bool = False
+    enable_logging: bool = False
 
 
 class Variable(BaseModel):
@@ -149,11 +170,10 @@ class Configuration(BaseModel):
         )
 
         for combination in product_combinations:
-            for option, condition in self.conditions.items():
+            for option, conditions in self.conditions.items():
                 for run in range(self.number_of_runs):
                     yield Command(
-                        fast_rerouting=condition.fast_rerouting,
-                        congestion=condition.congestion,
+                        conditions=conditions,
                         main_directory=self.directory,
                         variables=dict(
                             zip(

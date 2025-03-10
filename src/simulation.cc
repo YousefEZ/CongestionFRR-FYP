@@ -54,6 +54,18 @@ float udp_end = 15.0;
 std::string dir = "";
 
 bool enable_rerouting = false;
+bool enable_router_pcap = false;
+bool enable_udp_pcap = false;
+bool enable_logging = false;
+
+float udp_on_time_mean = 0.5;
+float udp_on_time_variance = 0.1;
+float udp_on_time_bound = 0.25;
+
+float udp_off_time_mean = 0.3;
+float udp_off_time_variance = 0.1;
+float udp_off_time_bound = 0.1;
+
 
 uint32_t seed = 23643;
 int run = 1;
@@ -209,12 +221,25 @@ int main(int argc, char* argv[])
     cmd.AddValue("udp_segment_size", "UDP segment size", udpSegmentSize);
     cmd.AddValue("udp_end_time", "UDP End", udp_end);
 
+    cmd.AddValue("udp_on_time_mean", "UDP On Time Mean", udp_on_time_mean);
+    cmd.AddValue("udp_on_time_variance", "UDP On Time Variance",
+                 udp_on_time_variance);
+    cmd.AddValue("udp_on_time_bound", "UDP On Time Bound", udp_on_time_bound);
+
+    cmd.AddValue("udp_off_time_mean", "UDP Off Time Mean", udp_off_time_mean);
+    cmd.AddValue("udp_off_time_variance", "UDP Off Time Variance",
+                 udp_off_time_variance);
+    cmd.AddValue("udp_off_time_bound", "UDP Off Time Bound", udp_off_time_bound);
+    
     cmd.AddValue("policy_threshold", "Congestion policy threshold",
                  cong_threshold);
     cmd.AddValue("dir", "Traces directory", dir);
     cmd.AddValue("seed", "The random seed", seed);
     cmd.AddValue("enable-rerouting", "enable fast rerouting on congestion",
                  enable_rerouting);
+    cmd.AddValue("enable-router-pcap", "enable pcap on routers", enable_router_pcap);
+    cmd.AddValue("enable-udp-pcap", "enable pcap on udp traffic", enable_udp_pcap);
+    cmd.AddValue("enable-logging", "enable logging", enable_logging);
     cmd.AddValue("run", "run number", run);
 
     cmd.Parse(argc, argv);
@@ -261,15 +286,17 @@ int main(int argc, char* argv[])
     Names::Add("CongestionSender", nodes.Get(0));
     for (int i = 0; i < number_of_tcp_senders; i++)
         Names::Add("TrafficSender" + std::to_string(i), tcp_devices.Get(i));
-    ns3::LogComponentEnable("TcpLinuxReno", ns3::LOG_LEVEL_ALL);
-    ns3::LogComponentEnable("TcpLinuxReno", ns3::LOG_PREFIX_TIME);
-    ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_LEVEL_DEBUG);
-    ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_PREFIX_TIME);
-    ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_LEVEL_DEBUG);
-    ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_PREFIX_TIME);
-    ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_LEVEL_INFO);
-    ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_PREFIX_TIME);
-
+    if (enable_logging)
+    {
+      ns3::LogComponentEnable("TcpLinuxReno", ns3::LOG_LEVEL_ALL);
+      ns3::LogComponentEnable("TcpLinuxReno", ns3::LOG_PREFIX_TIME);
+      ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_LEVEL_DEBUG);
+      ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_PREFIX_TIME);
+      ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_LEVEL_DEBUG);
+      ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_PREFIX_TIME);
+      ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_LEVEL_INFO);
+      ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_PREFIX_TIME);
+    }
     Names::Add("Router01", nodes.Get(1));
     Names::Add("Router02", nodes.Get(2));
     Names::Add("Router03", nodes.Get(3));
@@ -339,7 +366,10 @@ int main(int argc, char* argv[])
             MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
         queue->TraceConnectWithoutContext(
             "Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue"));
-        p2p_congested_link->EnablePcapAll(dir);
+        if (enable_router_pcap)
+        {
+          p2p_congested_link->EnablePcapAll(dir);
+        } 
     } else {
         p2p_congested_link_no_frr = std::make_shared<PointToPointHelper>();
         p2p_congested_link_no_frr->SetDeviceAttribute(
@@ -359,8 +389,10 @@ int main(int argc, char* argv[])
             MakeBoundCallback(&PacketInQueueChange, "CongestedQueue"));
         queue->TraceConnectWithoutContext(
             "Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue"));
-
-        p2p_congested_link_no_frr->EnablePcapAll(dir);
+        if (enable_router_pcap)
+        {
+          p2p_congested_link_no_frr->EnablePcapAll(dir);
+        }
     }
 
     NetDeviceContainer devices_2_4 =
@@ -478,8 +510,6 @@ int main(int argc, char* argv[])
         tcp_source.SetAttribute(
             "MaxBytes",
             UintegerValue(tcp_bytes)); // 0 for unlimited data
-        tcp_source.SetAttribute("SendSize",
-                                UintegerValue(1024)); // Packet size in bytes
 
         Simulator::Schedule(Seconds(0.001), &TraceCwnd,
                             tcp_devices.Get(i)->GetId(), 0,
@@ -488,7 +518,6 @@ int main(int argc, char* argv[])
                             tcp_devices.Get(i)->GetId(), 0,
                             MakeCallback(&RTOChange));
 
-        p2p_traffic.EnablePcap(dir, tcp_devices.Get(i)->GetId(), 1);
 
         tcp_apps.push_back(tcp_source.Install(tcp_devices.Get(i)));
         tcp_apps.back().Start(Seconds(tcp_start));
@@ -522,9 +551,15 @@ int main(int argc, char* argv[])
     }
 
     // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
-    p2p_traffic.EnablePcapAll(dir);
+    if (enable_router_pcap)
+    {
+      p2p_traffic.EnablePcapAll(dir);
+    } 
+    if (enable_udp_pcap)
+    {
+      p2p_congestion.EnablePcapAll(dir);
+    } 
     p2p_destination.EnablePcapAll(dir);
-    p2p_congestion.EnablePcapAll(dir);
 
     fPlotCwnd.open(dir + "n0.dat", std::ios::out);
     for (auto& [queueName, q] : fQueues) {
