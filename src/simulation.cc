@@ -301,7 +301,7 @@ int main(int argc, char* argv[])
       ns3::LogComponentEnable("TcpSocketBase", ns3::LOG_PREFIX_TIME);
       ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_LEVEL_DEBUG);
       ns3::LogComponentEnable("TcpL4Protocol", ns3::LOG_PREFIX_TIME);
-      ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_LEVEL_INFO);
+      ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_LEVEL_DEBUG);
       ns3::LogComponentEnable("TcpTxBuffer", ns3::LOG_PREFIX_TIME);
     }
     Names::Add("Router01", nodes.Get(1));
@@ -376,7 +376,7 @@ int main(int argc, char* argv[])
             "Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue"));
         if (enable_router_pcap)
         {
-          p2p_congested_link->EnablePcapAll(dir);
+          p2p_congested_link->EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_2_3));
         } 
     } else {
         p2p_congested_link_no_frr = std::make_shared<PointToPointHelper>();
@@ -399,7 +399,7 @@ int main(int argc, char* argv[])
             "Enqueue", MakeBoundCallback(&EnqueuePacket, "CongestedQueue"));
         if (enable_router_pcap)
         {
-          p2p_congested_link_no_frr->EnablePcapAll(dir);
+          p2p_congested_link_no_frr->EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_2_3));
         }
     }
 
@@ -480,14 +480,14 @@ int main(int argc, char* argv[])
             InetSocketAddress(receiver_addr, udp_port));
         Ptr<NormalRandomVariable> on_time =
             CreateObject<NormalRandomVariable>();
-        on_time->SetAttribute("Mean", DoubleValue(0.5));
-        on_time->SetAttribute("Variance", DoubleValue(0.1));
-        on_time->SetAttribute("Bound", DoubleValue(0.25));
+        on_time->SetAttribute("Mean", DoubleValue(udp_on_time_mean));
+        on_time->SetAttribute("Variance", DoubleValue(udp_on_time_variance));
+        on_time->SetAttribute("Bound", DoubleValue(udp_on_time_bound));
         Ptr<NormalRandomVariable> off_time =
             CreateObject<NormalRandomVariable>();
-        off_time->SetAttribute("Mean", DoubleValue(0.3));
-        off_time->SetAttribute("Variance", DoubleValue(0.1));
-        off_time->SetAttribute("Bound", DoubleValue(0.1));
+        off_time->SetAttribute("Mean", DoubleValue(udp_off_time_mean));
+        off_time->SetAttribute("Variance", DoubleValue(udp_off_time_variance));
+        off_time->SetAttribute("Bound", DoubleValue(udp_off_time_bound));
 
         udp_source->SetAttribute("OnTime", PointerValue(on_time));
         udp_source->SetAttribute("OffTime", PointerValue(off_time));
@@ -500,7 +500,7 @@ int main(int argc, char* argv[])
         udp_app = std::make_shared<ApplicationContainer>(
             udp_source->Install(nodes.Get(0)));
         udp_app->Start(Seconds(udp_start));
-        udp_app->Stop(Seconds(tcp_end));
+        udp_app->Stop(Seconds(udp_end));
     }
     DataRate b_access(bandwidth_tcp);
     DataRate b_bottleneck(bandwidth_primary);
@@ -561,14 +561,19 @@ int main(int argc, char* argv[])
     // p2p_traffic.EnablePcap(dir, nodes.Get(4)->GetId(), 1);
     if (enable_router_pcap)
     {
-      p2p_traffic.EnablePcapAll(dir);
+      p2p_traffic.EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_M_2)); // Middle Router 
+      p2p_alternate.EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_2_4)); // Router1 --> Router2
+      p2p_alternate.EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_4_3)); // Router2 --> Router3
+      p2p_destination.EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_3_5)); // Router3 --> Receiver
     } 
     if (enable_udp_pcap)
     {
-      p2p_congestion.EnablePcapAll(dir);
+      p2p_congestion.EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(devices_0_2)); 
     } 
-    p2p_destination.EnablePcapAll(dir);
 
+    for (auto& sender_container : tcp_senders) 
+        p2p_destination.EnablePcap(dir, getDevice<0, ns3::PointToPointNetDevice>(sender_container));
+    p2p_destination.EnablePcap(dir, getDevice<1, ns3::PointToPointNetDevice>(devices_3_5));    
     fPlotCwnd.open(dir + "n0.dat", std::ios::out);
     for (auto& [queueName, q] : fQueues) {
         q.open(dir + queueName + ".dat", std::ios::out);
