@@ -1,17 +1,16 @@
 {
   "overwrite_settings":{
-    "base_settings": "experiments/base_setting.json", 
-    "bandwidth_alternate": "2Mbps"
+    "base_settings": "experiments/base_setting.json"
   }, 
   "variables": [
     {
-      "name": "delay_alternate",
-      "values": ["1ms", "5ms", "10ms", "50ms", "100ms", "200ms", "300ms", "400ms", "500ms"]   
+      "name": "bandwidth_alternate",
+      "values": ["0.5Mbps", "1.0Mbps", "1.5Mbps", "2.0Mbps", "2.5Mbps", "3.0Mbps", "3.5Mbps", "4.0Mbps", "4.5Mbps", "5.0Mbps", "5.5Mbps", "6.0Mbps", "6.5Mbps", "7.0Mbps"]
     }
   ],
   "directory": "traces",
   "conditions": {
-    "congested": {
+    "no_frr_congested": {
       "fast_rerouting": false,
       "congestion": true
     },

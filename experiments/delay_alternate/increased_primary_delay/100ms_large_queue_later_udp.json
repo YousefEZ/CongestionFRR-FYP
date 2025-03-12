@@ -1,0 +1,28 @@
+{
+  "overwrite_settings":{
+    "base_settings": "experiments/base_setting.json", 
+    "delay_primary": "100ms", 
+    "traffic_queue_size": "1000p",
+    "udp_start_time": 1.1
+  }, 
+  "variables": [
+    {
+      "name": "delay_alternate",
+      "values": ["1ms", "5ms", "10ms", "20ms", "30ms", "40ms","50ms", "60ms", "70ms", "100ms", "200ms", "300ms", "400ms", "500ms"]   
+    }
+  ],
+  "directory": "traces/big_queue/scaled_primary/later_udp/100ms",
+  "conditions": {
+    "no_frr_congested": {
+      "fast_rerouting": false,
+      "congestion": true
+    },
+    "frr": {
+      "fast_rerouting": true,
+      "congestion": true,
+      "enable_logging": true
+    }
+  },
+  "seed": 743281,
+  "number_of_runs": 50
+}

@@ -1,0 +1,22 @@
+{
+  "overwrite_settings":{
+    "base_settings": "experiments/base_setting.json"
+  }, 
+  "variables": [
+    {
+      "name": "delay_alternate",
+      "values": ["1ms"]   
+    }
+  ],
+  "directory": "traces/basic",
+  "conditions": {
+    "no_frr_congested": {
+      "fast_rerouting": false,
+      "congestion": true,
+      "enable_router_pcap": true,
+      "enable_logging": true
+    }
+  },
+  "seed": 743281,
+  "number_of_runs": 1
+}
