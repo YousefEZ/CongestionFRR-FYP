@@ -36,6 +36,7 @@ traces/*
 
 # Analysis Cache 
 .analysis_cache/
+output
 
 **/__pycache__
 
