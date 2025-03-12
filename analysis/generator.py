@@ -9,7 +9,7 @@ from functools import reduce
 import operator
 
 from mpire.pool import WorkerPool
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Settings(BaseModel):
@@ -133,7 +133,6 @@ class Command:
             command_options.append("--enable-udp-pcap")
         if self.conditions.enable_logging:
             command_options.append("--enable-logging")
-
         return command_options
 
     def generate(self) -> str:
@@ -149,9 +148,9 @@ class Command:
 class Conditions(BaseModel):
     fast_rerouting: bool
     congestion: bool
-    enable_router_pcap: bool = False
-    enable_udp_pcap: bool = False
-    enable_logging: bool = False
+    enable_router_pcap: bool = Field(default=False)
+    enable_udp_pcap: bool = Field(default=False)
+    enable_logging: bool = Field(default=False)
 
 
 class Variable(BaseModel):

@@ -25,7 +25,7 @@
   "udp_on_time_variance": 0.1,
   "udp_on_time_bound": 0.25,
 
-  "udp_off_time_mean": 0.5,
+  "udp_off_time_mean": 0.3,
   "udp_off_time_variance": 0.1,
   "udp_off_time_bound": 0.1,
   
