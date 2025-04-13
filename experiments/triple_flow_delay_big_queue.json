@@ -14,16 +14,13 @@
   ],
   "directory": "traces/triple_flow_delay_big_queue",
   "conditions": {
-    "congested":{
+    "no_frr_congested":{
       "fast_rerouting": false,
       "congestion": true
     },
     "frr": {
       "fast_rerouting": true,
-      "congestion": true,
-      "enable_logging": true,
-      "enable_router_pcap": true,
-      "enable_udp_pcap": true
+      "congestion": true
     }
   },
   "seed": 743281,

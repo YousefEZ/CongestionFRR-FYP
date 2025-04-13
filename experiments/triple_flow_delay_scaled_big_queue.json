@@ -15,7 +15,7 @@
   ],
   "directory": "traces/triple_flow_delay_big_queue",
   "conditions": {
-    "congested":{
+    "no_frr_congested":{
       "fast_rerouting": false,
       "congestion": true
     },
