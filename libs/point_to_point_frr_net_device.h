@@ -46,6 +46,7 @@
 #include "ns3/nstime.h"
 #include "ns3/ptr.h"
 #include "ns3/traced-callback.h"
+#include "ns3/point-to-point-module.h"
 
 #include "ns3/log.h"
 #include "ns3/packet.h"
@@ -53,11 +54,12 @@
 #include "ns3/trace-source-accessor.h"
 
 #include "frr_queue_base.h"
+#include "../libs/lfa_policy.h"
 #include <sstream>
-
 #include <list>
-
+#include <utility>
 #include <cstring>
+#include <memory>
 
 #define STRINGIFY_TYPE_ALIAS(alias) typeid(alias).name()
 
@@ -66,12 +68,10 @@ namespace ns3
 
 NS_LOG_COMPONENT_DEFINE("FRRQueue");
 
-template <typename FRR_POLICY>
 class PointToPointFRRChannel;
 
 class ErrorModel;
 
-template <typename FRR_POLICY>
 class PointToPointFRRNetDevice : public NetDevice
 {
   public:
@@ -82,16 +82,15 @@ class PointToPointFRRNetDevice : public NetDevice
     ~PointToPointFRRNetDevice() override;
 
     // Delete copy constructor and assignment operator to avoid misuse
-    PointToPointFRRNetDevice<FRR_POLICY>&
-    operator=(const PointToPointFRRNetDevice<FRR_POLICY>&) = delete;
-    PointToPointFRRNetDevice(const PointToPointFRRNetDevice<FRR_POLICY>&) =
-        delete;
+    PointToPointFRRNetDevice&
+    operator=(const PointToPointFRRNetDevice&) = delete;
+    PointToPointFRRNetDevice(const PointToPointFRRNetDevice&) = delete;
 
     void SetDataRate(DataRate bps);
 
     void SetInterframeGap(Time t);
 
-    bool Attach(Ptr<PointToPointFRRChannel<FRR_POLICY>> ch);
+    bool Attach(Ptr<PointToPointFRRChannel> ch);
 
     void SetQueue(Ptr<Queue<Packet>> queue);
 
@@ -126,6 +125,12 @@ class PointToPointFRRNetDevice : public NetDevice
 
     bool IsPointToPoint() const override;
     bool IsBridge() const override;
+
+    template <typename Policy>
+    void setPolicy();
+
+    bool sendPacket(Ptr<Packet> packet, const Address& dest,
+                    uint16_t protocolNumber);
 
     bool Send(Ptr<Packet> packet, const Address& dest,
               uint16_t protocolNumber) override;
@@ -177,7 +182,7 @@ class PointToPointFRRNetDevice : public NetDevice
 
     Time m_tInterframeGap;
 
-    Ptr<PointToPointFRRChannel<FRR_POLICY>> m_channel;
+    Ptr<PointToPointFRRChannel> m_channel;
 
     Ptr<Queue<Packet>> m_queue;
 
@@ -224,8 +229,9 @@ class PointToPointFRRNetDevice : public NetDevice
 
     Ptr<Packet> m_currentPkt;
 
-    FRR_POLICY m_frr_policy;
+    std::unique_ptr<ReroutingPolicy> m_frr_policy;
 
+  public:
     static uint16_t PppToEther(uint16_t protocol);
 
     static uint16_t EtherToPpp(uint16_t protocol);
@@ -233,7 +239,16 @@ class PointToPointFRRNetDevice : public NetDevice
 
 class Packet;
 
-template <typename FRR_POLICY>
+template <typename Policy>
+void PointToPointFRRNetDevice::setPolicy()
+{
+    static_assert(std::is_base_of<ReroutingPolicy, Policy>::value,
+                  "Policy must be a subclass of ReroutingPolicy");
+    std::cerr << "Setting Policy" << std::endl;
+    m_frr_policy = std::make_unique<Policy>();
+    std::cerr << "Set Policy" << std::endl;
+}
+
 class PointToPointFRRChannel : public Channel
 {
   public:
@@ -241,16 +256,14 @@ class PointToPointFRRChannel : public Channel
 
     PointToPointFRRChannel();
 
-    void Attach(Ptr<PointToPointFRRNetDevice<FRR_POLICY>> device);
+    void Attach(Ptr<PointToPointFRRNetDevice> device);
 
     virtual bool TransmitStart(Ptr<const Packet> p,
-                               Ptr<PointToPointFRRNetDevice<FRR_POLICY>> src,
-                               Time txTime);
+                               Ptr<PointToPointFRRNetDevice> src, Time txTime);
 
     std::size_t GetNDevices() const override;
 
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>>
-    GetPointToPointDevice(std::size_t i) const;
+    Ptr<PointToPointFRRNetDevice> GetPointToPointDevice(std::size_t i) const;
 
     Ptr<NetDevice> GetDevice(std::size_t i) const override;
 
@@ -262,9 +275,9 @@ class PointToPointFRRChannel : public Channel
 
     bool IsInitialized() const;
 
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> GetSource(uint32_t i) const;
+    Ptr<PointToPointFRRNetDevice> GetSource(uint32_t i) const;
 
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> GetDestination(uint32_t i) const;
+    Ptr<PointToPointFRRNetDevice> GetDestination(uint32_t i) const;
 
     typedef void (*TxRxAnimationCallback)(Ptr<const Packet> packet,
                                           Ptr<NetDevice> txDevice,
@@ -293,33 +306,31 @@ class PointToPointFRRChannel : public Channel
         Link() = default;
 
         WireState m_state{INITIALIZING};
-        Ptr<PointToPointFRRNetDevice<FRR_POLICY>> m_src;
-        Ptr<PointToPointFRRNetDevice<FRR_POLICY>> m_dst;
+        Ptr<PointToPointFRRNetDevice> m_src;
+        Ptr<PointToPointFRRNetDevice> m_dst;
     };
 
     Link m_link[N_DEVICES];
 };
 
-template <typename FRR_POLICY>
-TypeId PointToPointFRRChannel<FRR_POLICY>::GetTypeId()
+TypeId PointToPointFRRChannel::GetTypeId()
 {
     static TypeId tid =
         TypeId(getChannelString())
             .SetParent<Channel>()
             .SetGroupName("PointToPoint")
-            .AddConstructor<PointToPointFRRChannel<FRR_POLICY>>()
-            .AddAttribute(
-                "Delay", "Propagation delay through the channel",
-                TimeValue(Seconds(0)),
-                MakeTimeAccessor(&PointToPointFRRChannel<FRR_POLICY>::m_delay),
-                MakeTimeChecker())
+            .AddConstructor<PointToPointFRRChannel>()
+            .AddAttribute("Delay", "Propagation delay through the channel",
+                          TimeValue(Seconds(0)),
+                          MakeTimeAccessor(&PointToPointFRRChannel::m_delay),
+                          MakeTimeChecker())
             .AddTraceSource(
                 "TxRxPointToPoint",
                 "Trace source indicating transmission of packet "
                 "from the PointToPointFRRChannel, used by the Animation "
                 "interface.",
                 MakeTraceSourceAccessor(
-                    &PointToPointFRRChannel<FRR_POLICY>::m_txrxPointToPoint),
+                    &PointToPointFRRChannel::m_txrxPointToPoint),
                 getChannelString() + "::TxRxAnimationCallback");
     return tid;
 }
@@ -327,16 +338,14 @@ TypeId PointToPointFRRChannel<FRR_POLICY>::GetTypeId()
 //
 // By default, you get a channel that
 // has an "infitely" fast transmission speed and zero delay.
-template <typename FRR_POLICY>
-PointToPointFRRChannel<FRR_POLICY>::PointToPointFRRChannel()
+
+PointToPointFRRChannel::PointToPointFRRChannel()
     : Channel(), m_delay(Seconds(0.)), m_nDevices(0)
 {
     NS_LOG_FUNCTION_NOARGS();
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRChannel<FRR_POLICY>::Attach(
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> device)
+void PointToPointFRRChannel::Attach(Ptr<PointToPointFRRNetDevice> device)
 {
     NS_LOG_FUNCTION(this << device);
     NS_ASSERT_MSG(m_nDevices < N_DEVICES, "Only two devices permitted");
@@ -355,10 +364,9 @@ void PointToPointFRRChannel<FRR_POLICY>::Attach(
     }
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRChannel<FRR_POLICY>::TransmitStart(
-    Ptr<const Packet> p, Ptr<PointToPointFRRNetDevice<FRR_POLICY>> src,
-    Time txTime)
+bool PointToPointFRRChannel::TransmitStart(Ptr<const Packet> p,
+                                           Ptr<PointToPointFRRNetDevice> src,
+                                           Time txTime)
 {
     NS_LOG_FUNCTION(this << p << src);
     NS_LOG_LOGIC("UID is " << p->GetUid() << ")");
@@ -370,135 +378,121 @@ bool PointToPointFRRChannel<FRR_POLICY>::TransmitStart(
 
     Simulator::ScheduleWithContext(
         m_link[wire].m_dst->GetNode()->GetId(), txTime + m_delay,
-        &PointToPointFRRNetDevice<FRR_POLICY>::Receive, m_link[wire].m_dst,
-        p->Copy());
+        &PointToPointFRRNetDevice::Receive, m_link[wire].m_dst, p->Copy());
 
     // Call the tx anim callback on the net device
     m_txrxPointToPoint(p, src, m_link[wire].m_dst, txTime, txTime + m_delay);
     return true;
 }
 
-template <typename FRR_POLICY>
-std::size_t PointToPointFRRChannel<FRR_POLICY>::GetNDevices() const
+std::size_t PointToPointFRRChannel::GetNDevices() const
 {
     NS_LOG_FUNCTION_NOARGS();
     return m_nDevices;
 }
 
-template <typename FRR_POLICY>
-Ptr<PointToPointFRRNetDevice<FRR_POLICY>>
-PointToPointFRRChannel<FRR_POLICY>::GetPointToPointDevice(std::size_t i) const
+Ptr<PointToPointFRRNetDevice>
+PointToPointFRRChannel::GetPointToPointDevice(std::size_t i) const
 {
     NS_LOG_FUNCTION_NOARGS();
     NS_ASSERT(i < 2);
     return m_link[i].m_src;
 }
 
-template <typename FRR_POLICY>
-Ptr<NetDevice>
-PointToPointFRRChannel<FRR_POLICY>::GetDevice(std::size_t i) const
+Ptr<NetDevice> PointToPointFRRChannel::GetDevice(std::size_t i) const
 {
     NS_LOG_FUNCTION_NOARGS();
     return GetPointToPointDevice(i);
 }
 
-template <typename FRR_POLICY>
-Time PointToPointFRRChannel<FRR_POLICY>::GetDelay() const
+Time PointToPointFRRChannel::GetDelay() const
 {
     return m_delay;
 }
 
-template <typename FRR_POLICY>
-Ptr<PointToPointFRRNetDevice<FRR_POLICY>>
-PointToPointFRRChannel<FRR_POLICY>::GetSource(uint32_t i) const
+Ptr<PointToPointFRRNetDevice>
+PointToPointFRRChannel::GetSource(uint32_t i) const
 {
     return m_link[i].m_src;
 }
 
-template <typename FRR_POLICY>
-Ptr<PointToPointFRRNetDevice<FRR_POLICY>>
-PointToPointFRRChannel<FRR_POLICY>::GetDestination(uint32_t i) const
+Ptr<PointToPointFRRNetDevice>
+PointToPointFRRChannel::GetDestination(uint32_t i) const
 {
     return m_link[i].m_dst;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRChannel<FRR_POLICY>::IsInitialized() const
+bool PointToPointFRRChannel::IsInitialized() const
 {
     NS_ASSERT(m_link[0].m_state != INITIALIZING);
     NS_ASSERT(m_link[1].m_state != INITIALIZING);
     return true;
 }
 
-template <typename FRR_POLICY>
-TypeId PointToPointFRRNetDevice<FRR_POLICY>::GetTypeId()
+TypeId PointToPointFRRNetDevice::GetTypeId()
 {
     static TypeId tid =
         TypeId(getNetDeviceString())
             .SetParent<NetDevice>()
             .SetGroupName("PointToPoint")
-            .AddConstructor<PointToPointFRRNetDevice<FRR_POLICY>>()
-            .AddAttribute("Mtu", "The MAC-level Maximum Transmission Unit",
-                          UintegerValue(DEFAULT_MTU),
-                          MakeUintegerAccessor(
-                              &PointToPointFRRNetDevice<FRR_POLICY>::SetMtu,
-                              &PointToPointFRRNetDevice<FRR_POLICY>::GetMtu),
-                          MakeUintegerChecker<uint16_t>())
-            .AddAttribute("Address", "The MAC address of this device.",
-                          Mac48AddressValue(Mac48Address("ff:ff:ff:ff:ff:ff")),
-                          MakeMac48AddressAccessor(
-                              &PointToPointFRRNetDevice<FRR_POLICY>::m_address),
-                          MakeMac48AddressChecker())
-            .AddAttribute("DataRate",
-                          "The default data rate for point to point links",
-                          DataRateValue(DataRate("32768b/s")),
-                          MakeDataRateAccessor(
-                              &PointToPointFRRNetDevice<FRR_POLICY>::m_bps),
-                          MakeDataRateChecker())
+            .AddConstructor<PointToPointFRRNetDevice>()
+            .AddAttribute(
+                "Mtu", "The MAC-level Maximum Transmission Unit",
+                UintegerValue(DEFAULT_MTU),
+                MakeUintegerAccessor(&PointToPointFRRNetDevice::SetMtu,
+                                     &PointToPointFRRNetDevice::GetMtu),
+                MakeUintegerChecker<uint16_t>())
+            .AddAttribute(
+                "Address", "The MAC address of this device.",
+                Mac48AddressValue(Mac48Address("ff:ff:ff:ff:ff:ff")),
+                MakeMac48AddressAccessor(&PointToPointFRRNetDevice::m_address),
+                MakeMac48AddressChecker())
+            .AddAttribute(
+                "DataRate", "The default data rate for point to point links",
+                DataRateValue(DataRate("32768b/s")),
+                MakeDataRateAccessor(&PointToPointFRRNetDevice::m_bps),
+                MakeDataRateChecker())
             .AddAttribute(
                 "ReceiveErrorModel",
                 "The receiver error model used to simulate packet loss",
                 PointerValue(),
                 MakePointerAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_receiveErrorModel),
+                    &PointToPointFRRNetDevice::m_receiveErrorModel),
                 MakePointerChecker<ErrorModel>())
             .AddAttribute(
                 "InterframeGap",
                 "The time to wait between packet (frame) transmissions",
                 TimeValue(Seconds(0.0)),
-                MakeTimeAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_tInterframeGap),
+                MakeTimeAccessor(&PointToPointFRRNetDevice::m_tInterframeGap),
                 MakeTimeChecker())
 
             //
             // Transmit queueing discipline for the device which includes its
             // own set of trace hooks.
             //
-            .AddAttribute("TxQueue",
-                          "A queue to use as the transmit queue in the device.",
-                          PointerValue(),
-                          MakePointerAccessor(
-                              &PointToPointFRRNetDevice<FRR_POLICY>::m_queue),
-                          MakePointerChecker<Queue<Packet>>())
+            .AddAttribute(
+                "TxQueue",
+                "A queue to use as the transmit queue in the device.",
+                PointerValue(),
+                MakePointerAccessor(&PointToPointFRRNetDevice::m_queue),
+                MakePointerChecker<Queue<Packet>>())
 
             //
             // Trace sources at the "top" of the net device, where packets
             // transition to/from higher layers.
             //
-            .AddTraceSource(
-                "MacTx",
-                "Trace source indicating a packet has arrived "
-                "for transmission by this device",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_macTxTrace),
-                "ns3::Packet::TracedCallback")
-            .AddTraceSource(
-                "MacTxDrop",
-                "Trace source indicating a packet has been dropped "
-                "by the device before transmission",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_macTxDropTrace),
-                "ns3::Packet::TracedCallback")
+            .AddTraceSource("MacTx",
+                            "Trace source indicating a packet has arrived "
+                            "for transmission by this device",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_macTxTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource("MacTxDrop",
+                            "Trace source indicating a packet has been dropped "
+                            "by the device before transmission",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_macTxDropTrace),
+                            "ns3::Packet::TracedCallback")
             .AddTraceSource(
                 "MacPromiscRx",
                 "A packet has been received by this device, "
@@ -506,7 +500,7 @@ TypeId PointToPointFRRNetDevice<FRR_POLICY>::GetTypeId()
                 "and is being forwarded up the local protocol stack.  "
                 "This is a promiscuous trace,",
                 MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_macPromiscRxTrace),
+                    &PointToPointFRRNetDevice::m_macPromiscRxTrace),
                 "ns3::Packet::TracedCallback")
             .AddTraceSource(
                 "MacRx",
@@ -515,63 +509,58 @@ TypeId PointToPointFRRNetDevice<FRR_POLICY>::GetTypeId()
                 "and is being forwarded up the local protocol stack.  "
                 "This is a non-promiscuous trace,",
                 MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_macRxTrace),
+                    &PointToPointFRRNetDevice::m_macRxTrace),
                 "ns3::Packet::TracedCallback")
 #if 0
     // Not currently implemented for this device
     .AddTraceSource ("MacRxDrop",
                      "Trace source indicating a packet was dropped "
                      "before being forwarded up the stack",
-                     MakeTraceSourceAccessor (&PointToPointFRRNetDevice<FRR_POLICY>::m_macRxDropTrace),
+                     MakeTraceSourceAccessor (&PointToPointFRRNetDevice::m_macRxDropTrace),
                      "ns3::Packet::TracedCallback")
 #endif
             //
             // Trace sources at the "bottom" of the net device, where packets
             // transition to/from the channel.
             //
-            .AddTraceSource(
-                "PhyTxBegin",
-                "Trace source indicating a packet has begun "
-                "transmitting over the channel",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_phyTxBeginTrace),
-                "ns3::Packet::TracedCallback")
-            .AddTraceSource(
-                "PhyTxEnd",
-                "Trace source indicating a packet has been "
-                "completely transmitted over the channel",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_phyTxEndTrace),
-                "ns3::Packet::TracedCallback")
-            .AddTraceSource(
-                "PhyTxDrop",
-                "Trace source indicating a packet has been "
-                "dropped by the device during transmission",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_phyTxDropTrace),
-                "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyTxBegin",
+                            "Trace source indicating a packet has begun "
+                            "transmitting over the channel",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_phyTxBeginTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyTxEnd",
+                            "Trace source indicating a packet has been "
+                            "completely transmitted over the channel",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_phyTxEndTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyTxDrop",
+                            "Trace source indicating a packet has been "
+                            "dropped by the device during transmission",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_phyTxDropTrace),
+                            "ns3::Packet::TracedCallback")
 #if 0
     // Not currently implemented for this device
     .AddTraceSource ("PhyRxBegin",
                      "Trace source indicating a packet has begun "
                      "being received by the device",
-                     MakeTraceSourceAccessor (&PointToPointFRRNetDevice<FRR_POLICY>::m_phyRxBeginTrace),
+                     MakeTraceSourceAccessor (&PointToPointFRRNetDevice::m_phyRxBeginTrace),
                      "ns3::Packet::TracedCallback")
 #endif
-            .AddTraceSource(
-                "PhyRxEnd",
-                "Trace source indicating a packet has been "
-                "completely received by the device",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_phyRxEndTrace),
-                "ns3::Packet::TracedCallback")
-            .AddTraceSource(
-                "PhyRxDrop",
-                "Trace source indicating a packet has been "
-                "dropped by the device during reception",
-                MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_phyRxDropTrace),
-                "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyRxEnd",
+                            "Trace source indicating a packet has been "
+                            "completely received by the device",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_phyRxEndTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyRxDrop",
+                            "Trace source indicating a packet has been "
+                            "dropped by the device during reception",
+                            MakeTraceSourceAccessor(
+                                &PointToPointFRRNetDevice::m_phyRxDropTrace),
+                            "ns3::Packet::TracedCallback")
 
             //
             // Trace sources designed to simulate a packet sniffer facility
@@ -583,35 +572,31 @@ TypeId PointToPointFRRNetDevice<FRR_POLICY>::GetTypeId()
                 "Trace source simulating a non-promiscuous packet sniffer "
                 "attached to the device",
                 MakeTraceSourceAccessor(
-                    &PointToPointFRRNetDevice<FRR_POLICY>::m_snifferTrace),
+                    &PointToPointFRRNetDevice::m_snifferTrace),
                 "ns3::Packet::TracedCallback")
             .AddTraceSource(
                 "PromiscSniffer",
                 "Trace source simulating a promiscuous packet sniffer "
                 "attached to the device",
-                MakeTraceSourceAccessor(&PointToPointFRRNetDevice<
-                                        FRR_POLICY>::m_promiscSnifferTrace),
+                MakeTraceSourceAccessor(
+                    &PointToPointFRRNetDevice::m_promiscSnifferTrace),
                 "ns3::Packet::TracedCallback");
     return tid;
 }
 
-template <typename FRR_POLICY>
-PointToPointFRRNetDevice<FRR_POLICY>::PointToPointFRRNetDevice()
+PointToPointFRRNetDevice::PointToPointFRRNetDevice()
     : m_txMachineState(READY), m_channel(nullptr), m_linkUp(false),
       m_currentPkt(nullptr)
 {
     NS_LOG_FUNCTION(this);
 }
 
-template <typename FRR_POLICY>
-PointToPointFRRNetDevice<FRR_POLICY>::~PointToPointFRRNetDevice()
+PointToPointFRRNetDevice::~PointToPointFRRNetDevice()
 {
     NS_LOG_FUNCTION(this);
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::AddHeader(Ptr<Packet> p,
-                                                     uint16_t protocolNumber)
+void PointToPointFRRNetDevice::AddHeader(Ptr<Packet> p, uint16_t protocolNumber)
 {
     NS_LOG_FUNCTION(this << p << protocolNumber);
     PppHeader ppp;
@@ -619,9 +604,7 @@ void PointToPointFRRNetDevice<FRR_POLICY>::AddHeader(Ptr<Packet> p,
     p->AddHeader(ppp);
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::ProcessHeader(Ptr<Packet> p,
-                                                         uint16_t& param)
+bool PointToPointFRRNetDevice::ProcessHeader(Ptr<Packet> p, uint16_t& param)
 {
     NS_LOG_FUNCTION(this << p << param);
     PppHeader ppp;
@@ -630,8 +613,7 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::ProcessHeader(Ptr<Packet> p,
     return true;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::DoDispose()
+void PointToPointFRRNetDevice::DoDispose()
 {
     NS_LOG_FUNCTION(this);
     m_node = nullptr;
@@ -642,22 +624,19 @@ void PointToPointFRRNetDevice<FRR_POLICY>::DoDispose()
     NetDevice::DoDispose();
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetDataRate(DataRate bps)
+void PointToPointFRRNetDevice::SetDataRate(DataRate bps)
 {
     NS_LOG_FUNCTION(this);
     m_bps = bps;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetInterframeGap(Time t)
+void PointToPointFRRNetDevice::SetInterframeGap(Time t)
 {
     NS_LOG_FUNCTION(this << t.As(Time::S));
     m_tInterframeGap = t;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::TransmitStart(Ptr<Packet> p)
+bool PointToPointFRRNetDevice::TransmitStart(Ptr<Packet> p)
 {
     NS_LOG_FUNCTION(this << p);
     NS_LOG_LOGIC("UID is " << p->GetUid() << ")");
@@ -679,8 +658,7 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::TransmitStart(Ptr<Packet> p)
     NS_LOG_LOGIC("Schedule TransmitCompleteEvent in "
                  << txCompleteTime.As(Time::S));
     Simulator::Schedule(txCompleteTime,
-                        &PointToPointFRRNetDevice<FRR_POLICY>::TransmitComplete,
-                        this);
+                        &PointToPointFRRNetDevice::TransmitComplete, this);
 
     bool result = m_channel->TransmitStart(p, this, txTime);
     if (!result) {
@@ -689,8 +667,7 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::TransmitStart(Ptr<Packet> p)
     return result;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::TransmitComplete()
+void PointToPointFRRNetDevice::TransmitComplete()
 {
     NS_LOG_FUNCTION(this);
 
@@ -724,9 +701,7 @@ void PointToPointFRRNetDevice<FRR_POLICY>::TransmitComplete()
     TransmitStart(p);
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::Attach(
-    Ptr<PointToPointFRRChannel<FRR_POLICY>> ch)
+bool PointToPointFRRNetDevice::Attach(Ptr<PointToPointFRRChannel> ch)
 {
     NS_LOG_FUNCTION(this << &ch);
 
@@ -743,23 +718,19 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::Attach(
     return true;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetQueue(Ptr<Queue<Packet>> q)
+void PointToPointFRRNetDevice::SetQueue(Ptr<Queue<Packet>> q)
 {
     NS_LOG_FUNCTION(this << q);
     m_queue = q;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetReceiveErrorModel(
-    Ptr<ErrorModel> em)
+void PointToPointFRRNetDevice::SetReceiveErrorModel(Ptr<ErrorModel> em)
 {
     NS_LOG_FUNCTION(this << em);
     m_receiveErrorModel = em;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::Receive(Ptr<Packet> packet)
+void PointToPointFRRNetDevice::Receive(Ptr<Packet> packet)
 {
     NS_LOG_FUNCTION(this << packet);
     uint16_t protocol = 0;
@@ -805,36 +776,31 @@ void PointToPointFRRNetDevice<FRR_POLICY>::Receive(Ptr<Packet> packet)
     }
 }
 
-template <typename FRR_POLICY>
-Ptr<Queue<Packet>> PointToPointFRRNetDevice<FRR_POLICY>::GetQueue() const
+Ptr<Queue<Packet>> PointToPointFRRNetDevice::GetQueue() const
 {
     NS_LOG_FUNCTION(this);
     return m_queue;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::NotifyLinkUp()
+void PointToPointFRRNetDevice::NotifyLinkUp()
 {
     NS_LOG_FUNCTION(this);
     m_linkUp = true;
     m_linkChangeCallbacks();
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetIfIndex(const uint32_t index)
+void PointToPointFRRNetDevice::SetIfIndex(const uint32_t index)
 {
     NS_LOG_FUNCTION(this);
     m_ifIndex = index;
 }
 
-template <typename FRR_POLICY>
-uint32_t PointToPointFRRNetDevice<FRR_POLICY>::GetIfIndex() const
+uint32_t PointToPointFRRNetDevice::GetIfIndex() const
 {
     return m_ifIndex;
 }
 
-template <typename FRR_POLICY>
-Ptr<Channel> PointToPointFRRNetDevice<FRR_POLICY>::GetChannel() const
+Ptr<Channel> PointToPointFRRNetDevice::GetChannel() const
 {
     return m_channel;
 }
@@ -845,29 +811,24 @@ Ptr<Channel> PointToPointFRRNetDevice<FRR_POLICY>::GetChannel() const
 // methods to get and set the address.  Rather than be rude and assert, we let
 // clients get and set the address, but simply ignore them.
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetAddress(Address address)
+void PointToPointFRRNetDevice::SetAddress(Address address)
 {
     NS_LOG_FUNCTION(this << address);
     m_address = Mac48Address::ConvertFrom(address);
 }
 
-template <typename FRR_POLICY>
-Address PointToPointFRRNetDevice<FRR_POLICY>::GetAddress() const
+Address PointToPointFRRNetDevice::GetAddress() const
 {
     return m_address;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::IsLinkUp() const
+bool PointToPointFRRNetDevice::IsLinkUp() const
 {
     NS_LOG_FUNCTION(this);
     return m_linkUp;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::AddLinkChangeCallback(
-    Callback<void> callback)
+void PointToPointFRRNetDevice::AddLinkChangeCallback(Callback<void> callback)
 {
     NS_LOG_FUNCTION(this);
     m_linkChangeCallbacks.ConnectWithoutContext(callback);
@@ -877,8 +838,8 @@ void PointToPointFRRNetDevice<FRR_POLICY>::AddLinkChangeCallback(
 // This is a point-to-point device, so every transmission is a broadcast to
 // all of the devices on the network.
 //
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::IsBroadcast() const
+
+bool PointToPointFRRNetDevice::IsBroadcast() const
 {
     NS_LOG_FUNCTION(this);
     return true;
@@ -889,126 +850,65 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::IsBroadcast() const
 // point-to-point device.  The base class NetDevice wants us to return a
 // broadcast address, so we make up something reasonable.
 //
-template <typename FRR_POLICY>
-Address PointToPointFRRNetDevice<FRR_POLICY>::GetBroadcast() const
+
+Address PointToPointFRRNetDevice::GetBroadcast() const
 {
     NS_LOG_FUNCTION(this);
     return Mac48Address::GetBroadcast();
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::IsMulticast() const
+bool PointToPointFRRNetDevice::IsMulticast() const
 {
     NS_LOG_FUNCTION(this);
     return true;
 }
 
-template <typename FRR_POLICY>
-Address PointToPointFRRNetDevice<FRR_POLICY>::GetMulticast(
-    Ipv4Address multicastGroup) const
+Address PointToPointFRRNetDevice::GetMulticast(Ipv4Address multicastGroup) const
 {
     NS_LOG_FUNCTION(this);
     return Mac48Address("01:00:5e:00:00:00");
 }
 
-template <typename FRR_POLICY>
-Address
-PointToPointFRRNetDevice<FRR_POLICY>::GetMulticast(Ipv6Address addr) const
+Address PointToPointFRRNetDevice::GetMulticast(Ipv6Address addr) const
 {
     NS_LOG_FUNCTION(this << addr);
     return Mac48Address("33:33:00:00:00:00");
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::IsPointToPoint() const
+bool PointToPointFRRNetDevice::IsPointToPoint() const
 {
     NS_LOG_FUNCTION(this);
     return true;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::IsBridge() const
+bool PointToPointFRRNetDevice::IsBridge() const
 {
     NS_LOG_FUNCTION(this);
     return false;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::addAlternateTarget(
+void PointToPointFRRNetDevice::addAlternateTarget(
     Ptr<ns3::PointToPointNetDevice> device)
 {
-    m_frr_policy.addAlternateTargets(device);
+    std::cerr << "Adding Alternate Target" << std::endl;
+    m_frr_policy->addAlternateTarget(device);
+    std::cerr << "Added Alternate Target" << std::endl;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::isCongested()
+bool PointToPointFRRNetDevice::isCongested()
 {
     return dynamic_cast<FRRQueueBase*>(PeekPointer(m_queue))->isCongested();
 }
 
 // #define REROUTE_HEAD
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::Send(Ptr<Packet> packet,
-                                                const Address& dest,
-                                                uint16_t protocolNumber)
+bool PointToPointFRRNetDevice::sendPacket(Ptr<Packet> packet,
+                                          const Address& dest,
+                                          uint16_t protocolNumber)
 {
-    NS_LOG_FUNCTION(this << packet << dest << protocolNumber);
-    NS_LOG_LOGIC("p=" << packet << ", dest=" << &dest);
-    NS_LOG_LOGIC("UID is " << packet->GetUid());
-
-    //
-    // If IsLinkUp() is false it means there is no channel to send any packet
-    // over so we just hit the drop trace on the packet and return an error.
-    //
-    if (!IsLinkUp()) {
-        m_macTxDropTrace(packet);
-        return false;
-    }
-
-    if (isCongested() && m_frr_policy.reroutable()) {
-        if (true) {
-            AddHeader(packet, protocolNumber);
-            m_macTxTrace(packet);
-            // NS_LOG_LOGIC("Device is congested, rerouting head");
-            std::stringstream queueStream;
-            dynamic_cast<FRRQueueBase*>(PeekPointer(m_queue))
-                ->PrintQueue(queueStream);
-            NS_LOG_INFO("Congested Queue: " << queueStream.str());
-            Ptr<Packet> head = m_queue->Dequeue();
-            bool result = false;
-            if (m_queue->Enqueue(packet)) {
-                if (m_txMachineState == READY) {
-                    packet = m_queue->Dequeue();
-                    m_snifferTrace(packet);
-                    m_promiscSnifferTrace(packet);
-                    result = TransmitStart(packet);
-                } else {
-                    result = true;
-                }
-            } else {
-                m_macTxDropTrace(packet);
-                result = false;
-            }
-            std::stringstream packetStream;
-            head->Print(packetStream);
-            NS_LOG_INFO("Rerouting Packet: " << packetStream.str() << " to "
-                                             << dest);
-            PppHeader ppp;
-            ppp.SetProtocol(EtherToPpp(protocolNumber));
-            head->RemoveHeader(ppp);
-
-            return m_frr_policy.reroute(head, dest, protocolNumber) && result;
-        } else {
-            NS_LOG_LOGIC("Device is congested, rerouting tail");
-            return m_frr_policy.reroute(packet, dest, protocolNumber);
-        }
-    }
-
     AddHeader(packet, protocolNumber);
     m_macTxTrace(packet);
 
-    NS_LOG_LOGIC("Device is not congested, sending packet normally");
     //
     // Stick a point to point protocol header on the packet in preparation for
     // shoving it out the door.
@@ -1037,66 +937,79 @@ bool PointToPointFRRNetDevice<FRR_POLICY>::Send(Ptr<Packet> packet,
     return false;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::SendFrom(Ptr<Packet> packet,
-                                                    const Address& source,
-                                                    const Address& dest,
-                                                    uint16_t protocolNumber)
+bool PointToPointFRRNetDevice::Send(Ptr<Packet> packet, const Address& dest,
+                                    uint16_t protocolNumber)
+{
+    NS_LOG_FUNCTION(this << packet << dest << protocolNumber);
+    NS_LOG_LOGIC("p=" << packet << ", dest=" << &dest);
+    NS_LOG_LOGIC("UID is " << packet->GetUid());
+
+    //
+    // If IsLinkUp() is false it means there is no channel to send any packet
+    // over so we just hit the drop trace on the packet and return an error.
+    //
+    if (!IsLinkUp()) {
+        m_macTxDropTrace(packet);
+        return false;
+    }
+
+    std::cerr << "Handling Packet" << std::endl;
+    bool result =
+        m_frr_policy->handlePacket(packet, dest, protocolNumber, *this);
+    std::cerr << "Handled Packet: " << result << std::endl;
+    return result;
+}
+
+bool PointToPointFRRNetDevice::SendFrom(Ptr<Packet> packet,
+                                        const Address& source,
+                                        const Address& dest,
+                                        uint16_t protocolNumber)
 {
     NS_LOG_FUNCTION(this << packet << source << dest << protocolNumber);
     return false;
 }
 
-template <typename FRR_POLICY>
-Ptr<Node> PointToPointFRRNetDevice<FRR_POLICY>::GetNode() const
+Ptr<Node> PointToPointFRRNetDevice::GetNode() const
 {
     return m_node;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetNode(Ptr<Node> node)
+void PointToPointFRRNetDevice::SetNode(Ptr<Node> node)
 {
     NS_LOG_FUNCTION(this);
     m_node = node;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::NeedsArp() const
+bool PointToPointFRRNetDevice::NeedsArp() const
 {
     NS_LOG_FUNCTION(this);
     return false;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetReceiveCallback(
-    NetDevice::ReceiveCallback cb)
+void PointToPointFRRNetDevice::SetReceiveCallback(NetDevice::ReceiveCallback cb)
 {
     m_rxCallback = cb;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::SetPromiscReceiveCallback(
+void PointToPointFRRNetDevice::SetPromiscReceiveCallback(
     NetDevice::PromiscReceiveCallback cb)
 {
     m_promiscCallback = cb;
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::SupportsSendFrom() const
+bool PointToPointFRRNetDevice::SupportsSendFrom() const
 {
     NS_LOG_FUNCTION(this);
     return false;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRNetDevice<FRR_POLICY>::DoMpiReceive(Ptr<Packet> p)
+void PointToPointFRRNetDevice::DoMpiReceive(Ptr<Packet> p)
 {
     NS_LOG_FUNCTION(this << p);
     Receive(p);
 }
 
-template <typename FRR_POLICY>
-Address PointToPointFRRNetDevice<FRR_POLICY>::GetRemote() const
+Address PointToPointFRRNetDevice::GetRemote() const
 {
     NS_LOG_FUNCTION(this);
     NS_ASSERT(m_channel->GetNDevices() == 2);
@@ -1111,23 +1024,20 @@ Address PointToPointFRRNetDevice<FRR_POLICY>::GetRemote() const
     return Address();
 }
 
-template <typename FRR_POLICY>
-bool PointToPointFRRNetDevice<FRR_POLICY>::SetMtu(uint16_t mtu)
+bool PointToPointFRRNetDevice::SetMtu(uint16_t mtu)
 {
     NS_LOG_FUNCTION(this << mtu);
     m_mtu = mtu;
     return true;
 }
 
-template <typename FRR_POLICY>
-uint16_t PointToPointFRRNetDevice<FRR_POLICY>::GetMtu() const
+uint16_t PointToPointFRRNetDevice::GetMtu() const
 {
     NS_LOG_FUNCTION(this);
     return m_mtu;
 }
 
-template <typename FRR_POLICY>
-uint16_t PointToPointFRRNetDevice<FRR_POLICY>::PppToEther(uint16_t proto)
+uint16_t PointToPointFRRNetDevice::PppToEther(uint16_t proto)
 {
     NS_LOG_FUNCTION_NOARGS();
     switch (proto) {
@@ -1138,8 +1048,7 @@ uint16_t PointToPointFRRNetDevice<FRR_POLICY>::PppToEther(uint16_t proto)
     return 0;
 }
 
-template <typename FRR_POLICY>
-uint16_t PointToPointFRRNetDevice<FRR_POLICY>::EtherToPpp(uint16_t proto)
+uint16_t PointToPointFRRNetDevice::EtherToPpp(uint16_t proto)
 {
     NS_LOG_FUNCTION_NOARGS();
     switch (proto) {
@@ -1150,10 +1059,9 @@ uint16_t PointToPointFRRNetDevice<FRR_POLICY>::EtherToPpp(uint16_t proto)
     return 0;
 }
 
-template <typename FRR_POLICY>
-std::string PointToPointFRRChannel<FRR_POLICY>::makeChannelString()
+std::string PointToPointFRRChannel::makeChannelString()
 {
-    using ChannelType = PointToPointFRRChannel<FRR_POLICY>;
+    using ChannelType = PointToPointFRRChannel;
     int status;
     char* demangled = abi::__cxa_demangle(STRINGIFY_TYPE_ALIAS(ChannelType),
                                           nullptr, nullptr, &status);
@@ -1164,18 +1072,16 @@ std::string PointToPointFRRChannel<FRR_POLICY>::makeChannelString()
     return result;
 }
 
-template <typename FRR_POLICY>
-const std::string& PointToPointFRRChannel<FRR_POLICY>::getChannelString()
+const std::string& PointToPointFRRChannel::getChannelString()
 {
     const static std::string result =
-        PointToPointFRRChannel<FRR_POLICY>::makeChannelString();
+        PointToPointFRRChannel::makeChannelString();
     return result;
 }
 
-template <typename FRR_POLICY>
-std::string PointToPointFRRNetDevice<FRR_POLICY>::makeNetDeviceString()
+std::string PointToPointFRRNetDevice::makeNetDeviceString()
 {
-    using NetDeviceType = PointToPointFRRNetDevice<FRR_POLICY>;
+    using NetDeviceType = PointToPointFRRNetDevice;
     int status;
     char* demangled = abi::__cxa_demangle(STRINGIFY_TYPE_ALIAS(NetDeviceType),
                                           nullptr, nullptr, &status);
@@ -1186,11 +1092,10 @@ std::string PointToPointFRRNetDevice<FRR_POLICY>::makeNetDeviceString()
     return result;
 }
 
-template <typename FRR_POLICY>
-const std::string& PointToPointFRRNetDevice<FRR_POLICY>::getNetDeviceString()
+const std::string& PointToPointFRRNetDevice::getNetDeviceString()
 {
     const static std::string result =
-        PointToPointFRRNetDevice<FRR_POLICY>::makeNetDeviceString();
+        PointToPointFRRNetDevice::makeNetDeviceString();
     return result;
 }
 

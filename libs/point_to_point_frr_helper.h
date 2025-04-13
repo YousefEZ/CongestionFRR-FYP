@@ -26,7 +26,6 @@ namespace ns3
 class NetDevice;
 class Node;
 
-template <typename FRR_POLICY>
 class PointToPointFRRHelper : public PcapHelperForDevice,
                               public AsciiTraceHelperForDevice
 {
@@ -46,14 +45,19 @@ class PointToPointFRRHelper : public PcapHelperForDevice,
 
     void DisableFlowControl();
 
+    template <typename Policy>
     NetDeviceContainer Install(NodeContainer c);
-
+    
+    template <typename Policy>
     NetDeviceContainer Install(Ptr<Node> a, Ptr<Node> b);
-
+    
+    template <typename Policy>
     NetDeviceContainer Install(Ptr<Node> a, std::string bName);
 
+    template <typename Policy>
     NetDeviceContainer Install(std::string aName, Ptr<Node> b);
 
+    template <typename Policy>
     NetDeviceContainer Install(std::string aNode, std::string bNode);
 
   private:
@@ -74,9 +78,8 @@ class PointToPointFRRHelper : public PcapHelperForDevice,
  *  Implementation of the templates declared above.
  ***************************************************************/
 
-template <typename FRR_POLICY>
 template <typename... Ts>
-void PointToPointFRRHelper<FRR_POLICY>::SetQueue(std::string type, Ts&&... args)
+void PointToPointFRRHelper::SetQueue(std::string type, Ts&&... args)
 {
     QueueBase::AppendItemTypeIfNotPresent(type, "Packet");
 
@@ -84,39 +87,33 @@ void PointToPointFRRHelper<FRR_POLICY>::SetQueue(std::string type, Ts&&... args)
     m_queueFactory.Set(std::forward<Ts>(args)...);
 }
 
-template <typename FRR_POLICY>
-PointToPointFRRHelper<FRR_POLICY>::PointToPointFRRHelper()
+PointToPointFRRHelper::PointToPointFRRHelper()
 {
     m_queueFactory.SetTypeId("ns3::DropTailQueue<Packet>");
     m_deviceFactory.SetTypeId(
-        ns3::PointToPointFRRNetDevice<FRR_POLICY>::getNetDeviceString());
-    m_channelFactory.SetTypeId(
-        ns3::PointToPointFRRChannel<FRR_POLICY>::getChannelString());
+        ns3::PointToPointFRRNetDevice::getNetDeviceString());
+    m_channelFactory.SetTypeId(ns3::PointToPointFRRChannel::getChannelString());
     m_enableFlowControl = true;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRHelper<FRR_POLICY>::SetDeviceAttribute(
+void PointToPointFRRHelper::SetDeviceAttribute(
     std::string n1, const AttributeValue& v1)
 {
     m_deviceFactory.Set(n1, v1);
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRHelper<FRR_POLICY>::SetChannelAttribute(
+void PointToPointFRRHelper::SetChannelAttribute(
     std::string n1, const AttributeValue& v1)
 {
     m_channelFactory.Set(n1, v1);
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRHelper<FRR_POLICY>::DisableFlowControl()
+void PointToPointFRRHelper::DisableFlowControl()
 {
     m_enableFlowControl = false;
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRHelper<FRR_POLICY>::EnablePcapInternal(
+void PointToPointFRRHelper::EnablePcapInternal(
     std::string prefix, Ptr<NetDevice> nd, bool promiscuous,
     bool explicitFilename)
 {
@@ -126,8 +123,8 @@ void PointToPointFRRHelper<FRR_POLICY>::EnablePcapInternal(
     // the system.  We can only deal with devices of type
     // PointToPointFRRNetDevice.
     //
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> device =
-        nd->GetObject<PointToPointFRRNetDevice<FRR_POLICY>>();
+    Ptr<PointToPointFRRNetDevice> device =
+        nd->GetObject<PointToPointFRRNetDevice>();
     if (!device) {
         NS_LOG_INFO("Device " << device
                               << " not of type ns3::PointToPointFRRNetDevice");
@@ -145,12 +142,11 @@ void PointToPointFRRHelper<FRR_POLICY>::EnablePcapInternal(
 
     Ptr<PcapFileWrapper> file =
         pcapHelper.CreateFile(filename, std::ios::out, PcapHelper::DLT_PPP);
-    pcapHelper.HookDefaultSink<PointToPointFRRNetDevice<FRR_POLICY>>(
+    pcapHelper.HookDefaultSink<PointToPointFRRNetDevice>(
         device, "PromiscSniffer", file);
 }
 
-template <typename FRR_POLICY>
-void PointToPointFRRHelper<FRR_POLICY>::EnableAsciiInternal(
+void PointToPointFRRHelper::EnableAsciiInternal(
     Ptr<OutputStreamWrapper> stream, std::string prefix, Ptr<NetDevice> nd,
     bool explicitFilename)
 {
@@ -160,8 +156,8 @@ void PointToPointFRRHelper<FRR_POLICY>::EnableAsciiInternal(
     // the system.  We can only deal with devices of type
     // PointToPointFRRNetDevice.
     //
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> device =
-        nd->GetObject<PointToPointFRRNetDevice<FRR_POLICY>>();
+    Ptr<PointToPointFRRNetDevice> device =
+        nd->GetObject<PointToPointFRRNetDevice>();
     if (!device) {
         NS_LOG_INFO("Device " << device
                               << " not of type ns3::PointToPointFRRNetDevice");
@@ -201,8 +197,9 @@ void PointToPointFRRHelper<FRR_POLICY>::EnableAsciiInternal(
         //
         // The MacRx trace source provides our "r" event.
         //
-        asciiTraceHelper.HookDefaultReceiveSinkWithoutContext<
-            PointToPointFRRNetDevice<FRR_POLICY>>(device, "MacRx", theStream);
+        asciiTraceHelper
+            .HookDefaultReceiveSinkWithoutContext<PointToPointFRRNetDevice>(
+                device, "MacRx", theStream);
 
         //
         // The "+", '-', and 'd' events are driven by trace sources actually in
@@ -217,9 +214,9 @@ void PointToPointFRRHelper<FRR_POLICY>::EnableAsciiInternal(
             queue, "Dequeue", theStream);
 
         // PhyRxDrop trace source for "d" event
-        asciiTraceHelper.HookDefaultDropSinkWithoutContext<
-            PointToPointFRRNetDevice<FRR_POLICY>>(device, "PhyRxDrop",
-                                                  theStream);
+        asciiTraceHelper
+            .HookDefaultDropSinkWithoutContext<PointToPointFRRNetDevice>(
+                device, "PhyRxDrop", theStream);
 
         return;
     }
@@ -278,27 +275,31 @@ void PointToPointFRRHelper<FRR_POLICY>::EnableAsciiInternal(
                         &AsciiTraceHelper::DefaultDropSinkWithContext, stream));
 }
 
-template <typename FRR_POLICY>
-NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(NodeContainer c)
+template <typename Policy>
+NetDeviceContainer PointToPointFRRHelper::Install(NodeContainer c)
 {
     NS_ASSERT(c.GetN() == 2);
-    return Install(c.Get(0), c.Get(1));
+    return Install<Policy>(c.Get(0), c.Get(1));
 }
 
-template <typename FRR_POLICY>
-NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(Ptr<Node> a,
+template <typename Policy>
+NetDeviceContainer PointToPointFRRHelper::Install(Ptr<Node> a,
                                                               Ptr<Node> b)
 {
     NetDeviceContainer container;
 
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> devA =
-        m_deviceFactory.Create<PointToPointFRRNetDevice<FRR_POLICY>>();
+    Ptr<PointToPointFRRNetDevice> devA =
+        m_deviceFactory.Create<PointToPointFRRNetDevice>();
+    devA->setPolicy<Policy>();
+
     devA->SetAddress(Mac48Address::Allocate());
     a->AddDevice(devA);
     Ptr<Queue<Packet>> queueA = m_queueFactory.Create<Queue<Packet>>();
     devA->SetQueue(queueA);
-    Ptr<PointToPointFRRNetDevice<FRR_POLICY>> devB =
-        m_deviceFactory.Create<PointToPointFRRNetDevice<FRR_POLICY>>();
+    Ptr<PointToPointFRRNetDevice> devB =
+        m_deviceFactory.Create<PointToPointFRRNetDevice>();
+    devB->setPolicy<Policy>();
+
     devB->SetAddress(Mac48Address::Allocate());
     b->AddDevice(devB);
     Ptr<Queue<Packet>> queueB = m_queueFactory.Create<Queue<Packet>>();
@@ -315,7 +316,7 @@ NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(Ptr<Node> a,
         devB->AggregateObject(ndqiB);
     }
 
-    Ptr<PointToPointFRRChannel<FRR_POLICY>> channel = nullptr;
+    Ptr<PointToPointFRRChannel> channel = nullptr;
 
     // If MPI is enabled, we need to see if both nodes have the same system id
     // (rank), and the rank is the same as this instance.  If both are true,
@@ -332,21 +333,21 @@ NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(Ptr<Node> a,
     }
     if (useNormalChannel) {
         m_channelFactory.SetTypeId("ns3::PointToPointFRRChannel");
-        channel = m_channelFactory.Create<PointToPointFRRChannel<FRR_POLICY>>();
+        channel = m_channelFactory.Create<PointToPointFRRChannel>();
     } else {
         m_channelFactory.SetTypeId("ns3::PointToPointRemoteChannel");
         channel = m_channelFactory.Create<PointToPointRemoteChannel>();
         Ptr<MpiReceiver> mpiRecA = CreateObject<MpiReceiver>();
         Ptr<MpiReceiver> mpiRecB = CreateObject<MpiReceiver>();
         mpiRecA->SetReceiveCallback(
-            MakeCallback(&PointToPointFRRNetDevice<FRR_POLICY>::Receive, devA));
+            MakeCallback(&PointToPointFRRNetDevice::Receive, devA));
         mpiRecB->SetReceiveCallback(
-            MakeCallback(&PointToPointFRRNetDevice<FRR_POLICY>::Receive, devB));
+            MakeCallback(&PointToPointFRRNetDevice::Receive, devB));
         devA->AggregateObject(mpiRecA);
         devB->AggregateObject(mpiRecB);
     }
 #else
-    channel = m_channelFactory.Create<PointToPointFRRChannel<FRR_POLICY>>();
+    channel = m_channelFactory.Create<PointToPointFRRChannel>();
 #endif
 
     devA->Attach(channel);
@@ -357,29 +358,29 @@ NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(Ptr<Node> a,
     return container;
 }
 
-template <typename FRR_POLICY>
-NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(Ptr<Node> a,
+template <typename Policy>
+NetDeviceContainer PointToPointFRRHelper::Install(Ptr<Node> a,
                                                               std::string bName)
 {
     Ptr<Node> b = Names::Find<Node>(bName);
-    return Install(a, b);
+    return Install<Policy>(a, b);
 }
 
-template <typename FRR_POLICY>
-NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(std::string aName,
+template <typename Policy>
+NetDeviceContainer PointToPointFRRHelper::Install(std::string aName,
                                                               Ptr<Node> b)
 {
     Ptr<Node> a = Names::Find<Node>(aName);
-    return Install(a, b);
+    return Install<Policy>(a, b);
 }
 
-template <typename FRR_POLICY>
-NetDeviceContainer PointToPointFRRHelper<FRR_POLICY>::Install(std::string aName,
+template <typename Policy>
+NetDeviceContainer PointToPointFRRHelper::Install(std::string aName,
                                                               std::string bName)
 {
     Ptr<Node> a = Names::Find<Node>(aName);
     Ptr<Node> b = Names::Find<Node>(bName);
-    return Install(a, b);
+    return Install<Policy>(a, b);
 }
 
 } // namespace ns3

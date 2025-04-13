@@ -1,6 +1,8 @@
 #ifndef BASIC_CONGESTION_POLICY_H
 #define BASIC_CONGESTION_POLICY_H
 
+#include <iostream>
+
 namespace ns3
 {
 
