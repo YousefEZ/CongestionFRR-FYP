@@ -1,7 +1,8 @@
 {
   "overwrite_settings":{
     "base_settings": "experiments/base_setting.json", 
-    "traffic_queue_size": "1000p"
+    "bandwidth_alternate": "2.0Mbps",  
+    "fast_rerouting_scheme": "SafeRerouteHead" 
   }, 
   "variables": [
     {

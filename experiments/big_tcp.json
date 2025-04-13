@@ -1,6 +1,10 @@
 {
   "overwrite_settings":{
     "base_settings": "experiments/base_setting.json", 
+    "bandwidth_tcp": "1Mbps",
+    "tcp_bytes": 1000000, 
+    "tcp_senders": 3,
+    "tcp_end_time": 30.0,
     "traffic_queue_size": "1000p"
   }, 
   "variables": [
@@ -9,7 +13,7 @@
       "values": ["1ms", "5ms", "10ms", "50ms", "100ms", "200ms", "300ms", "400ms", "500ms"]   
     }
   ],
-  "directory": "traces/big_queue",
+  "directory": "traces/big_tcp",
   "conditions": {
     "no_frr_congested": {
       "fast_rerouting": false,
@@ -17,9 +21,7 @@
     },
     "frr": {
       "fast_rerouting": true,
-      "congestion": true,
-      "enable_udp_pcap": true,
-      "enable_router_pcap": true
+      "congestion": true
     }
   },
   "seed": 743281,

@@ -1,31 +1,30 @@
 {
   "overwrite_settings":{
-    "base_settings": "experiments/base_setting.json", 
-    "delay_primary": "100ms", 
+    "base_settings": "experiments/base_setting.json",
+    "tcp_senders": 3, 
+    "bandwidth_primary": "9Mbps", 
+    "default_queue_size": "12p",
     "traffic_queue_size": "1000p",
-    "udp_end_time": 35.0,
-    "tcp_end_time": 35.0
-  }, 
+    "fast_rerouting_scheme": "ReroutePerFlow",
+    "tcp_type": "ns3::TcpLinuxReno"
+  },
   "variables": [
     {
       "name": "delay_alternate",
       "values": ["1ms", "5ms", "10ms", "50ms", "100ms", "200ms", "300ms", "400ms", "500ms"]   
     }
   ],
-  "directory": "traces/big_queue/scaled_primary/100ms",
+  "directory": "traces/triple_flow_delay_big_queue",
   "conditions": {
+    "congested":{
+      "fast_rerouting": false,
+      "congestion": true
+    },
     "frr": {
       "fast_rerouting": true,
       "congestion": true,
-      "enable_router_pcap": true,
       "enable_logging": true,
-      "enable_udp_pcap": true
-    },
-    "no_frr_congested": {
-      "fast_rerouting": false,
-      "congestion": true,
       "enable_router_pcap": true,
-      "enable_logging": true,
       "enable_udp_pcap": true
     }
   },

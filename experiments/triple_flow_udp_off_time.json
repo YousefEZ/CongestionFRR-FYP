@@ -1,0 +1,29 @@
+{
+  "overwrite_settings":{
+    "base_settings": "experiments/base_setting.json",
+    "tcp_senders": 3, 
+    "bandwidth_primary": "9Mbps" 
+  },
+  "variables": [
+    {
+      "name": "udp_off_time_mean",
+      "values": [0.1, 0.5, 1.0]
+    }
+  ],
+  "directory": "traces/triple_flow_congestion_pattern",
+  "conditions": {
+    "congested":{
+      "fast_rerouting": false,
+      "congestion": true
+    },
+    "frr": {
+      "fast_rerouting": true,
+      "congestion": true,
+      "enable_logging": true,
+      "enable_router_pcap": true,
+      "enable_udp_pcap": true
+    }
+  },
+  "seed": 743281,
+  "number_of_runs": 50
+}

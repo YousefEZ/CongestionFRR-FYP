@@ -1,12 +1,13 @@
 {
   "overwrite_settings":{
     "base_settings": "experiments/base_setting.json",
-    "tcp_end_time": 35.0,
-    "udp_end_time": 35.0
+    "fast_rerouting_scheme": "SafeRerouteHead", 
+    "tcp_senders": 3,
+    "bandwidth_primary": "9Mbps"
   }, 
   "variables": [
     {
-      "name": "bandwidth_primary",
+      "name": "bandwidth_alternate",
       "values": ["0.5Mbps", "1.0Mbps", "1.5Mbps", "2.0Mbps", "2.5Mbps", "3.0Mbps", "3.5Mbps", "4.0Mbps", "4.5Mbps", "5.0Mbps", "5.5Mbps", "6.0Mbps", "6.5Mbps", "7.0Mbps"]
     }
   ],

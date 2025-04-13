@@ -1,22 +1,34 @@
 {
   "overwrite_settings":{
-    "base_settings": "experiments/base_setting.json"
+    "base_settings": "experiments/base_setting.json", 
+    "tcp_recovery": "ns3::TcpClassicRecovery",
+    "tcp_type": "ns3::TcpLinuxReno"
   }, 
   "variables": [
     {
-      "name": "delay_alternate",
-      "values": ["1ms"]   
+      "name": "bandwidth_primary",
+      "values": ["3Mbps"]
     }
   ],
   "directory": "traces/basic",
   "conditions": {
+    "no_frr_no_congested": {
+      "fast_rerouting": false,
+      "congestion": false,
+      "enable_logging": true
+    },
     "no_frr_congested": {
       "fast_rerouting": false,
       "congestion": true,
-      "enable_router_pcap": true,
       "enable_logging": true
+    },
+    "frr": {
+      "fast_rerouting": true,
+      "congestion": true,
+      "enable_logging": true,
+      "enable_router_pcap": true 
     }
   },
   "seed": 743281,
-  "number_of_runs": 1
+  "number_of_runs": 50
 }

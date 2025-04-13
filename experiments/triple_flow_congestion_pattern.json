@@ -1,18 +1,20 @@
 {
   "overwrite_settings":{
     "base_settings": "experiments/base_setting.json",
-    "tcp_end_time": 35.0,
-    "udp_end_time": 35.0
-  }, 
+    "tcp_senders": 3, 
+    "bandwidth_primary": "9Mbps", 
+    "udp_on_time_variance": 0.0,
+    "udp_on_time_bound": 0.0
+  },
   "variables": [
     {
-      "name": "bandwidth_primary",
-      "values": ["0.5Mbps", "1.0Mbps", "1.5Mbps", "2.0Mbps", "2.5Mbps", "3.0Mbps", "3.5Mbps", "4.0Mbps", "4.5Mbps", "5.0Mbps", "5.5Mbps", "6.0Mbps", "6.5Mbps", "7.0Mbps"]
+      "name": "udp_on_time_mean",
+      "values": [0.1, 0.5, 1.0]
     }
   ],
-  "directory": "traces",
+  "directory": "traces/triple_flow_congestion_pattern",
   "conditions": {
-    "no_frr_congested": {
+    "no_frr_congested":{
       "fast_rerouting": false,
       "congestion": true
     },

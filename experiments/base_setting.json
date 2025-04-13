@@ -4,7 +4,8 @@
   "bandwidth_udp": "3Mbps",
   "bandwidth_alternate": "3Mbps",
   "bandwidth_destination": "1000Mbps",
-  
+  "fast_rerouting_scheme": "RerouteHead",
+
   "delay_primary": "2ms",
   "delay_tcp": "2ms",
   "delay_udp": "2ms",
@@ -15,8 +16,10 @@
   "tcp_bytes": 1000000, 
   "tcp_start_time": 0.0,
   "tcp_end_time": 15.0,
-  "tcp_senders": 1, 
-  
+  "tcp_senders": 1,
+  "tcp_recovery": "ns3::TcpPrrRecovery",
+  "tcp_type": "ns3::TcpCubic",
+
   "udp_segment_size": 1250,
   "udp_start_time": 0.175,
   "udp_end_time": 15.0,
