@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
+    Generic,
     NamedTuple,
     NotRequired,
     Optional,
     Sequence,
+    TypeVar,
     TypedDict,
 )
 
@@ -37,13 +39,25 @@ class Labels(TypedDict):
     title: str
 
 
-class Plot(BaseModel):
+T = TypeVar("T")
+
+
+class Plot(BaseModel, Generic[T]):
     variable: float
-    value: float
+    value: T
 
     def __sub__(self, other: Plot) -> Plot:
-        assert self.variable == other.variable
-        return Plot(variable=self.variable, value=self.value - other.value)
+        assert self.variable == other.variable, "Variables do not match"
+        if isinstance(self.value, float):
+            return Plot(variable=self.variable, value=self.value - other.value)
+        elif isinstance(self.value, list):
+            return Plot(
+                variable=self.variable,
+                value=[a - b for a, b in zip(self.value, other.value)],
+            )
+        raise NotImplementedError(
+            "Subtraction not implemented for this type, {}".format(type(self.value))
+        )
 
     def __hash__(self) -> int:
         return hash((self.variable, self.value))
@@ -279,6 +293,39 @@ def plot(
 class SeededPlots(NamedTuple):
     baseline: list[Plot]
     alternative: list[Plot]
+
+
+def cdf_labelled(
+    plots: dict[str, Sequence[np.number] | NDArray[np.number]],
+    labels: Labels,
+    target: Optional[str] = None,
+    styles: Optional[dict[str, Style]] = None,
+) -> None:
+    figure, axes = plt.subplots(figsize=(10, 6))
+
+    for label, plot in plots.items():
+        axes.hist(
+            plot,
+            bins=100,
+            density=True,
+            histtype="step",
+            cumulative=True,
+            label=label,
+        )
+
+    axes.set_ylabel(labels["y_axis"])
+    axes.set_xlabel(labels["x_axis"])
+    axes.set_title(labels["title"])
+    axes.legend()
+
+    figure.subplots_adjust(left=0.2)
+
+    if target:
+        figure.savefig(target, dpi=300)
+    else:
+        figure.show()
+
+    figure.clf()
 
 
 def cdf(

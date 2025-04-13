@@ -60,7 +60,6 @@ class OOOAnalyzer(PacketAnalyzer):
             delivered_sent_packets, received_packets
         ):
             if hashable_packet(sent_packet) != hashable_packet(received_packet):
-                print(hashable_packet(sent_packet), hashable_packet(received_packet))
                 out_of_order_packets.append(sent_packet)
 
         return out_of_order_packets
@@ -270,11 +269,12 @@ class TrueBytesInFlightAnalyzer(PacketCapture):
         self.bytes_in_flight.append((state.time, self.current_bytes_in_flight))
 
 
-def tcp_bytes_in_flight(debug_filename: str) -> list[tuple[float, int]]:
+def tcp_bytes_in_flight(debug_filename: str, sender: int) -> list[tuple[float, int]]:
     bytes_in_flight: list[tuple[float, int]] = []
+    string = f"[node {sender + 6}] Returning calculated bytesInFlight: "
     with open(debug_filename, "r") as debug_file:
         for line in debug_file:
-            if "[node 6] Returning calculated bytesInFlight: " in line:
+            if string in line:
                 bytes_in_flight.append(
                     (
                         float(line.split("s")[0]),

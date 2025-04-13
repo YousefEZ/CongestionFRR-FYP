@@ -26,3 +26,5 @@ class SocketState:
     last_send_timestamp: float = field(default=0)
     last_ack_timestamp: float = field(default=0)
     scoreboard: set[int] = field(default_factory=set)
+    retransmitted: dict[int, int] = field(default_factory=dict)
+    recovery_number: int = field(default_factory=int)

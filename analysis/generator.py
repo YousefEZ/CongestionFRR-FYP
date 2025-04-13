@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from typing import Generator, Iterable, Optional
+from typing import Any, Generator, Iterable, Optional
 from itertools import chain, product
 import shutil
 from functools import reduce
@@ -19,6 +19,7 @@ class Settings(BaseModel):
     bandwidth_udp: str
     bandwidth_tcp: str
     bandwidth_destination: str
+    fast_rerouting_scheme: str
 
     delay_primary: str
     delay_alternate: str
@@ -31,6 +32,8 @@ class Settings(BaseModel):
     tcp_segment_size: int
     tcp_start_time: float
     tcp_end_time: float
+    tcp_type: str
+    tcp_recovery: str
 
     udp_start_time: float
     udp_segment_size: int
@@ -76,9 +79,11 @@ class OverwrittenSetting(BaseModel):
         overwritten_settings = self.model_dump()
         return Settings(
             **{
-                key: overwritten_settings[key]
-                if overwritten_settings[key] is not None
-                else getattr(settings, key)
+                key: (
+                    overwritten_settings[key]
+                    if overwritten_settings[key] is not None
+                    else getattr(settings, key)
+                )
                 for key in settings.model_dump().keys()
             }
         )
@@ -88,7 +93,7 @@ class OverwrittenSetting(BaseModel):
 class Command:
     conditions: Conditions
     main_directory: str
-    variables: dict[str, str]
+    variables: dict[str, Any]
     seed: int
     run: int
     condition_label: str
@@ -102,7 +107,7 @@ class Command:
             self.variable_label,
             self.condition_label,
             f"{self.seed}{self.run}",
-            "_".join((value for value in self.variables.values())),
+            "_".join((str(value) for value in self.variables.values())),
         )
 
     def generate_dir(self) -> None:
@@ -123,7 +128,6 @@ class Command:
 
         if self.conditions.fast_rerouting:
             command_options.append("--enable-rerouting")
-            command_options.append("--policy_threshold=50")
         if self.conditions.congestion:
             command_options.append("--enable-udp")
 
@@ -155,7 +159,7 @@ class Conditions(BaseModel):
 
 class Variable(BaseModel):
     name: str
-    values: list[str]
+    values: list[Any]
 
 
 class Configuration(BaseModel):
@@ -166,7 +170,24 @@ class Configuration(BaseModel):
     seed: int
     number_of_runs: int
 
+    def _no_variable_runs(self) -> Generator[Command, None, None]:
+        for option, conditions in self.conditions.items():
+            for run in range(self.number_of_runs):
+                yield Command(
+                    conditions=conditions,
+                    main_directory=self.directory,
+                    variables={},
+                    seed=self.seed,
+                    run=run,
+                    condition_label=option,
+                    variable_label="base",
+                    settings=self.overwrite_settings.apply(),
+                )
+
     def commands(self) -> Generator[Command, None, None]:
+        if not self.variables:
+            yield from self._no_variable_runs()
+            return
         product_combinations = product(
             *(variable.values for variable in self.variables)
         )

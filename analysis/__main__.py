@@ -118,30 +118,32 @@ class GraphArguments:
 @click.option("--option", "-o", help="Option of the run", required=True)
 @click.option("--seed", "-s", help="Seed of the run", required=True)
 @click.option("--value", "-v", help="Value to display e.g. 3.0Mbps", required=True)
+@click.option("--sender", "-s", help="Traffic Sender number", default=1, type=int)
 def _bytesInFlight(
     directory: str,
     option: discovery.Options,
     seed: discovery.Seed,
     value: discovery.Variable,
+    sender: int,
 ) -> None:
     run = scenario.VariableRun(directory, option, seed, (value,))
-    sender, receiver = run.senders[value], run.receivers[value]
+    traffic_sender, receiver = run.senders[value][sender], run.receivers[value]
     source, dst = run.ip_addresses(value)
 
-    dropped_packets = DroppedPacketsAnalyzer(sender, receiver).filter_packets(
+    dropped_packets = DroppedPacketsAnalyzer(traffic_sender, receiver).filter_packets(
         source, dst
     )
     capture = TrueBytesInFlightAnalyzer(
         lost_packets=[hashable_packet(pkt) for pkt in dropped_packets]
     )
     TcpSourceReplayer(
-        file=sender, source=source, destination=dst, event_handlers=capture
+        file=traffic_sender, source=source, destination=dst, event_handlers=capture
     ).run()
 
     plot_bytesInFlight(
         capture.bytes_in_flight,
-        tcp_bytes_in_flight(run.debug_filename(value)),
-        congestion_windows(run.cwnd_filename(value)),
+        tcp_bytes_in_flight(run.debug_filename(value), sender),
+        congestion_windows(run.cwnd_filename(value, sender)),
     )
 
 
@@ -161,6 +163,7 @@ def _bytesInFlight(
 @click.option(
     "--receiver-ack", help="Receiver sending an ack", is_flag=True, default=False
 )
+@click.option("--sender", "-s", help="Traffic Sender number", default=1, type=int)
 def _sequence(
     directory: str,
     option: discovery.Options,
@@ -170,25 +173,26 @@ def _sequence(
     sender_ack: bool,
     receiver_seq: bool,
     receiver_ack: bool,
+    sender: int,
 ) -> None:
     run = scenario.VariableRun(directory, option, seed, (value,))
-    sender, receiver = run.senders[value], run.receivers[value]
-    source, dst = run.ip_addresses(value)
+    traffic_sender, receiver = run.senders[value][sender], run.receivers[value]
+    source, dst = run.flow_ip_addresses(value)[sender]
 
     packet_lists = []
     if sender_seq:
         packet_lists.append(
             Packets(
                 "Sender Seq",
-                sender.packets_from(source),
+                traffic_sender.packets_from(source),
                 operator.attrgetter("seq"),
                 build_conditions(
-                    SpuriousOOOAnalyzer(sender, receiver),
-                    SingleDupAckRetransmitSackAnalyzer(sender, receiver),
-                    FastRetransmitSackAnalyzer(sender),
-                    FastRetransmissionAnalyzer(sender),
-                    DroppedPacketsAnalyzer(sender, receiver),
-                    OOOAnalyzer(sender, receiver),
+                    SpuriousOOOAnalyzer(traffic_sender, receiver),
+                    SingleDupAckRetransmitSackAnalyzer(traffic_sender, receiver),
+                    FastRetransmitSackAnalyzer(traffic_sender),
+                    FastRetransmissionAnalyzer(traffic_sender),
+                    DroppedPacketsAnalyzer(traffic_sender, receiver),
+                    OOOAnalyzer(traffic_sender, receiver),
                     source=source,
                     destination=dst,
                 ),
@@ -198,7 +202,7 @@ def _sequence(
         packet_lists.append(
             Packets(
                 "Sender Ack",
-                sender.packets_from(dst),
+                traffic_sender.packets_from(dst),
                 operator.attrgetter("ack"),
             )
         )
@@ -222,7 +226,7 @@ def _sequence(
         packet_lists.append(
             Packets(
                 "Receiver Ack",
-                sender.packets_from(dst),
+                traffic_sender.packets_from(dst),
                 operator.attrgetter("ack"),
             )
         )
@@ -308,6 +312,17 @@ def _time(ctx: click.Context) -> None:
     }
     ctx.obj["property"] = "Flow Completion Time (s)"
     ctx.obj["title"] = "Flow Completion time"
+
+
+@click.group(name="total_recovery_time")
+@click.pass_context
+def _total_recovery_time(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.total_recovery_time
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Total Recovery Time (s)"
+    ctx.obj["title"] = "Total Recovery Time"
 
 
 @click.group(name="loss")
@@ -451,8 +466,56 @@ def _rto_wait_time_unsent_data(ctx: click.Context) -> None:
     ctx.obj["title"] = "RTO wait time on unsent data"
 
 
+@click.group(name="time_multi_flow")
+@click.pass_context
+def _time_multi_flow(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.times_multi_flow
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Flow Completion Time (s)"
+    ctx.obj["title"] = "Flow Completion time"
+
+
+@click.group(name="average_time")
+@click.pass_context
+def _average_time(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.average_time
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Flow Completion Time (s)"
+    ctx.obj["title"] = "Flow Completion time"
+
+
+@click.group(name="max_flow_time")
+@click.pass_context
+def _max_flow_time(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.max_flow_time
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Flow Completion Time (s)"
+    ctx.obj["title"] = "Flow Completion time"
+
+
+@click.group(name="average_congestion_window")
+@click.pass_context
+def _average_congestion_window(ctx: click.Context) -> None:
+    ctx.obj["statistics"] = {
+        option: scenario.average_congestion_window
+        for option, scenario in ctx.obj["scenarios"].items()
+    }
+    ctx.obj["property"] = "Average Congestion Window"
+    ctx.obj["title"] = "Average Congestion Window"
+
+
 statistics = (
+    _max_flow_time,
     _time,
+    _time_multi_flow,
+    _average_time,
+    _total_recovery_time,
     _loss,
     _lost,
     _reordering,
@@ -468,6 +531,7 @@ statistics = (
     _dropped_retransmitted_packets,
     _spurious_retransmissions_reordering,
     _longest_number_spurious_retransmissions_before_rto,
+    _average_congestion_window,
 )
 
 
@@ -517,6 +581,38 @@ def cdf(ctx: click.Context, variable: str) -> None:
     )
 
 
+@multi_command(*statistics, name="cdf_multi_flow")
+@click.option("--variable", "-v", help="Variable to plot", type=str, required=True)
+@click.pass_context
+def cdf_multi_flow(ctx: click.Context, variable: str) -> None:
+    arguments = ctx.obj["arguments"]
+    stats = ctx.obj["statistics"]
+
+    first_stat = next(iter(stats.values()))
+
+    extracted_variable = scenario.extract_numerical_value_from_string(variable)
+    variable_idx = 0
+    for idx in range(len(first_stat.variables)):
+        if first_stat.variables[idx] == extracted_variable:
+            variable_idx = idx
+            break
+
+    values = {
+        option: [plot[variable_idx].value for plot in stat.data.values()]
+        for option, stat in stats.items()
+    }
+
+    graph.cdf_multi_flow(
+        values,
+        graph.Labels(
+            x_axis=ctx.obj["property"],
+            y_axis="Probability of Occurrence",
+            title=ctx.obj["title"],
+        ),
+        target=arguments.output,
+    )
+
+
 @multi_command(*statistics, name="min_max_plot")
 @click.pass_context
 def min_max_plot(ctx: click.Context) -> None:
@@ -531,6 +627,10 @@ def min_max_plot(ctx: click.Context) -> None:
             title=ctx.obj["title"],
         ),
         target=arguments.output,
+        styles={
+            "no_frr_congested": {"ecolor": "blue", "color": "blue"},
+            "frr": {"ecolor": "orange", "color": "orange"},
+        },
     )
 
 
@@ -642,6 +742,7 @@ def scatter(ctx: click.Context, line: bool) -> None:
             title=f"{ctx.obj['title']} against {ctx.obj['against_title']}",
         ),
         target=arguments.output,
+        correlation_lines=line,
     )
 
 

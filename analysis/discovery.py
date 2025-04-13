@@ -1,9 +1,7 @@
 import os
 from typing import Literal, NewType, cast
 
-Devices = Literal[
-    "Receiver", "TrafficSender0", "Router01", "Router02", "Router03", "Receiver"
-]
+Devices = NewType("Devices", str)
 Seed = NewType("Seed", str)
 Variable = NewType("Variable", str)
 Options = Literal["baseline", "baseline-udp", "frr", "frr-udp"]
@@ -14,6 +12,17 @@ Options = Literal["baseline", "baseline-udp", "frr", "frr-udp"]
 # options being "baseline", "baseline-udp", "frr", "frr-udp" etc.
 # seed-run being "1234-1", "1234-2", "1234-3", "345-1", "345-2", "345-3"
 # variable being the values such as 1.25Mbps, 2.5Mbps, 5Mbps, 10Mbps, 20Mbps, 40Mbps
+
+
+def discover_senders(
+    directory: str, option: str, seed: str, variable: str
+) -> list[Devices]:
+    return sorted(
+        filter(
+            lambda device: "TrafficSender" in device,
+            map(Devices, os.listdir(f"{directory}/{option}/{seed}/{variable}")),
+        )
+    )
 
 
 def discover_variables(directory: str, option: str, seed: str) -> list[Variable]:

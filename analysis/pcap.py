@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from functools import cached_property
 from typing import NamedTuple
+import time
 
 import pyshark
 import scapy.packet
@@ -56,15 +57,39 @@ class PcapFile:
         return len(self.packets_from(source))
 
     def flow_completion_time(self, source: str, destination: str) -> float:
-        for packet in self.tcp_packets:
-            if (
-                packet.getlayer("IP").src == destination
-                and packet.getlayer("IP").dst == source
-                and packet[TCP].flags & TCP_FIN
-                and packet[TCP].flags & TCP_ACK
-            ):
-                return float(packet.time)
+        pyshark_cap = pyshark.FileCapture(
+            self.filename,
+            display_filter=f"tcp.flags.fin==1 and tcp.flags.ack==1 and ip.src=={destination}",
+        )
+        last_packet = None
+        for packet in pyshark_cap:
+            last_packet = packet
+        if last_packet:
+            timestamp = float(last_packet.sniff_timestamp)
+            pyshark_cap.close()
+            return timestamp
         assert False, "Flow completion time not found"
+
+    def flow_completion_times(
+        self, destination: str, tries: int = 0
+    ) -> dict[str, float]:
+        try:
+            pyshark_cap = pyshark.FileCapture(
+                self.filename,
+                display_filter=f"tcp.flags.fin==1 and tcp.flags.ack==1 and ip.src=={destination}",
+            )
+
+            times = {
+                packet.ip.dst: float(packet.sniff_timestamp) for packet in pyshark_cap
+            }
+            pyshark_cap.close()
+        except Exception as e:
+            print(f"Failed to load pcap file, attempt={tries}")
+            time.sleep(tries)
+            if tries >= 3:
+                raise e
+            return self.flow_completion_times(destination, tries + 1)
+        return times
 
     def number_of_packet_reordering_from_source(self, source: str) -> int:
         file_capture = pyshark.FileCapture(
@@ -72,7 +97,6 @@ class PcapFile:
             display_filter=f"ip.src=={source} and tcp.analysis.out_of_order",
         )
         packets = list(file_capture)
-        print(self.filename, len(packets))
 
         file_capture.close()
         return len(packets)

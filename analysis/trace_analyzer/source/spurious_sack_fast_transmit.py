@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import override
 
 import scapy
@@ -34,6 +34,23 @@ class SingleDupAckRetransmitPacketCapture(PacketCapture):
             >= replayer.DUPLICATE_ACK_THRESHOLD
         ):
             self.packets.append(packet)
+
+
+@dataclass
+class TotalTimeInRecovery(PacketCapture):
+    total_time_in_recovery: float = field(default_factory=float)
+    enter_recovery_time: float = field(default_factory=float)
+
+    @override
+    def on_enter_recovery(self, state: SocketState) -> None:
+        self.enter_recovery_time = state.time
+
+    @override
+    def on_exit_recovery(self, state: SocketState) -> None:
+        print(
+            f"At {state.time}, Total Time in recovery: {self.total_time_in_recovery + state.time - self.enter_recovery_time}"
+        )
+        self.total_time_in_recovery += state.time - self.enter_recovery_time
 
 
 def hashable_packet(packet):

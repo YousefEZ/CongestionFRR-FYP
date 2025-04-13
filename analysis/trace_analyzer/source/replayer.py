@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import math
 
 import scapy
 from scapy.all import Raw
@@ -68,7 +69,7 @@ class TcpSourceReplayer:
 
     def _handle_new_ack(self, packet: scapy.packet.Packet):
         self.event_handlers.on_ack(packet, self.state)
-        if packet[TCP].ack > self.state.recovery_point:
+        if packet[TCP].ack > self.state.recovery_point and self.state.in_recovery:
             self._exit_recovery()
         self._clear_dup_acks()
         self.state.last_acked_seq = packet[TCP].ack
@@ -89,16 +90,17 @@ class TcpSourceReplayer:
     def _handle_retransmission(self, packet: scapy.packet.Packet):
         self._enter_recovery(packet, self.state)
         self.event_handlers.on_retransmission(packet, self.state)
+        self.state.retransmitted[packet[TCP].seq] = self.state.recovery_number
 
     def _enter_recovery(self, packet: scapy.packet.Packet, state: SocketState):
         self.state.high_rtx = packet[TCP].seq
         self.state.recovery_point = state.high_tx_mark
         self.state.in_recovery = True
+        self.state.recovery_number += 1
         self.event_handlers.on_enter_recovery(state)
 
     def _exit_recovery(self):
         self.event_handlers.on_exit_recovery(self.state)
-        self.state.high_rtx = 0
         self.state.recovery_point = 0
         self.state.in_recovery = False
 
@@ -113,11 +115,19 @@ class TcpSourceReplayer:
         if packet[TCP].seq > self.state.high_tx_mark:
             self._handle_new_transmission(packet)
         else:
+            recovery_number = self.state.retransmitted.get(packet[TCP].seq, None)
+            # this packet is a retransmission
+            # it is a retransmission timeout if both conditions met
+            # 1. it has been retransmitted before (therefore recovery_number is not None)
+            # 2. is not a reaction to an acknowledgement
+            # or if the time since the last ack is greater than 0.5 seconds indicating a timeout
             if (
-                float(packet.time)
-                - float(self.state.last_sent_timestamps[packet[TCP].seq])
-                >= 0.9
-            ):
+                self.state.high_rtx > packet[TCP].seq
+                and recovery_number is not None
+                and not math.isclose(
+                    self.state.last_ack_timestamp, float(packet.time), abs_tol=0.001
+                )
+            ) or float(packet.time) - self.state.last_ack_timestamp > 0.5:
                 self._handle_retransmission_timeout(packet)
             else:
                 self._handle_retransmission(packet)
@@ -131,4 +141,5 @@ class TcpSourceReplayer:
             if packet[IP].dst == self.source:
                 self._handle_ack(packet)
                 continue
-            self._handle_send(packet)
+            if packet[IP].src == self.source:
+                self._handle_send(packet)

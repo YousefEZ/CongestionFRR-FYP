@@ -11,17 +11,21 @@ import rich.progress
 import scapy.packet
 
 from analysis import discovery, statistic
-from analysis.graph import Plot
+from analysis.graph import T, Plot
 from analysis.pcap import Communication, PcapFile
 from analysis.trace_analyzer.dst.reordered_packets import (
     DroppedRetransmittedPacketCapture,
     SpuriousOOORTOCapture,
     SpuriousRetransmissionAnalyzer,
+    congestion_windows,
     hashable_packet,
 )
 from analysis.trace_analyzer.source.packet_capture import PacketCapture
 from analysis.trace_analyzer.source.replayer import TcpSourceReplayer
 from analysis.trace_analyzer.source.socket_state import SocketState
+from analysis.trace_analyzer.source.spurious_sack_fast_transmit import (
+    TotalTimeInRecovery,
+)
 
 
 P = ParamSpec("P")
@@ -38,9 +42,9 @@ def extract_numerical_value_from_string(string: str) -> float:
     index = 0
     for index, character in enumerate(string):
         if not character.isdigit() and character != ".":
-            break
-    numerical_value = float(string[:index])
-    return numerical_value
+            return float(string[:index])
+    else:
+        return float(string)
 
 
 @dataclass
@@ -56,7 +60,7 @@ class RTOWaitingForUnsent(PacketCapture):
 
 
 @dataclass
-class RTOWaitTime(PacketCapture):
+class WaitTimeAfterRTO(PacketCapture):
     wait_time: float = field(default_factory=float)
 
     @override
@@ -78,13 +82,24 @@ class VariableRun:
         return f"{self.directory}/{self.option}/{self.seed}"
 
     @lru_cache
-    def pcap(self, variable: str, device: discovery.Devices, link: int) -> PcapFile:
+    def pcap(
+        self, variable: discovery.Variable, device: discovery.Devices, link: int
+    ) -> PcapFile:
         return PcapFile(f"{self.path}/{variable}/-{device}-{link}.pcap")
 
-    @property
-    def senders(self) -> dict[discovery.Variable, PcapFile]:
+    @cached_property
+    def number_of_senders(self) -> int:
+        return len(next(iter(self.senders.values())))
+
+    @cached_property
+    def senders(self) -> dict[discovery.Variable, list[PcapFile]]:
         return {
-            variable: self.pcap(variable, "TrafficSender0", 1)
+            variable: [
+                PcapFile(os.path.join(self.path, variable, file))
+                for file in discovery.discover_senders(
+                    self.directory, self.option, self.seed, variable
+                )
+            ]
             for variable in self.variables
         }
 
@@ -97,8 +112,8 @@ class VariableRun:
     def debug_filename(self, variable: str) -> str:
         return f"{self.path}/{variable}/debug.log"
 
-    def cwnd_filename(self, variable: str) -> str:
-        return f"{self.path}/{variable}/n0.dat"
+    def cwnd_filename(self, variable: str, sender: int) -> str:
+        return f"{self.path}/{variable}/n{sender}.dat"
 
     def packet_loss_at(self, variable: str) -> float:
         addresses = self.ip_addresses(variable)
@@ -110,10 +125,18 @@ class VariableRun:
         )
         return _calculate_packet_loss(source_packets, destination_packets)
 
-    def calculate_rto_wait_time_for_unsent(self, variable: str) -> float:
-        print(
-            f"Calculating RTO wait time for unsent packets for {variable} @ seed={self.seed}"
+    def calculate_average_congestion_window(self, variable: str, sender: int) -> float:
+        # [(0, 10), (1, 20), (2, 30)] => (10 + 20) / 2 = 15
+        cwnds = congestion_windows(self.cwnd_filename(variable, sender))
+        return (
+            sum(
+                (second[0] - first[0]) * first[1]
+                for first, second in zip(cwnds, cwnds[1:])
+            )
+            / cwnds[-1][0]
         )
+
+    def calculate_rto_wait_time_for_unsent(self, variable: str) -> float:
         capture = RTOWaitingForUnsent()
         TcpSourceReplayer(
             self.pcap(variable, "TrafficSender0", 1),
@@ -123,14 +146,22 @@ class VariableRun:
         return capture.wait_time
 
     def calculate_rto_wait_time(self, variable: str) -> float:
-        print(f"Calculating RTO wait time for {variable} @ seed={self.seed}")
-        capture = RTOWaitTime()
+        capture = WaitTimeAfterRTO()
         TcpSourceReplayer(
             self.pcap(variable, "TrafficSender0", 1),
             *self.ip_addresses(variable),
             capture,
         ).run()
         return capture.wait_time
+
+    def calculate_recovery_time(self, variable: str) -> float:
+        capture = TotalTimeInRecovery()
+        TcpSourceReplayer(
+            self.pcap(variable, "TrafficSender0", 1),
+            *self.ip_addresses(variable),
+            capture,
+        ).run()
+        return capture.total_time_in_recovery
 
     @lru_cache
     def packets_sent_by_source(self, variable: str) -> int:
@@ -162,12 +193,12 @@ class VariableRun:
     @lru_cache
     def packets_rerouted_at(self, variable: str) -> int:
         addresses = self.ip_addresses(variable)
-        rerouted_pcap = self.pcap(variable, "Router03", 1)
+        rerouted_pcap = self.pcap(variable, "Router03", 2)
         return rerouted_pcap.number_of_packets_from_source(addresses.source)
 
     @lru_cache
     def udp_packets_rerouted_at(self, variable: str) -> int:
-        rerouted_pcap = self.pcap(variable, "Router03", 1)
+        rerouted_pcap = self.pcap(variable, "Router03", 2)
         number_rerouted = len(rerouted_pcap.udp_packets)
         return number_rerouted
 
@@ -179,9 +210,6 @@ class VariableRun:
         return (self.udp_packets_rerouted_at(variable) / udp_packets_sent) * 100
 
     def calculate_dropped_retransmitted_packets(self, variable: str) -> int:
-        print(
-            f"Calculating dropped retransmitted packets for {variable} @ seed={self.seed}"
-        )
         dropped_packets_capture = DroppedRetransmittedPacketCapture()
         TcpSourceReplayer(
             self.pcap(variable, "TrafficSender0", 1),
@@ -231,7 +259,7 @@ class VariableRun:
 
         return burst_capture.longest_spurious_ooo_burst_count
 
-    def _map_plots(self, method: Callable[[str], float]) -> list[Plot]:
+    def _map_plots(self, method: Callable[[str], T]) -> list[Plot[T]]:
         return sorted(
             (
                 Plot(
@@ -296,6 +324,9 @@ class VariableRun:
             )
         )
 
+    def total_time_in_recovery(self) -> list[Plot]:
+        return self._map_plots(self.calculate_recovery_time)
+
     def rto_wait_time_for_unsent(self) -> list[Plot]:
         return self._map_plots(self.calculate_rto_wait_time_for_unsent)
 
@@ -306,7 +337,7 @@ class VariableRun:
         return self._map_plots(self.calculate_dropped_retransmitted_packets)
 
     @lru_cache
-    def ip_addresses(self, variable: str) -> Communication:
+    def ip_addresses(self, variable: discovery.Variable) -> Communication:
         # TODO: replace with a method to handle multiple flows
         return self.pcap(variable, "TrafficSender0", 1).first_addresses
 
@@ -314,6 +345,47 @@ class VariableRun:
         return self._map_plots(
             lambda variable: self.pcap(variable, "Receiver", 1).flow_completion_time(
                 *self.ip_addresses(variable)
+            )
+        )
+
+    def average_congestion_window(self) -> list[Plot]:
+        return self._map_plots(
+            lambda variable: self.calculate_average_congestion_window(variable, 0)
+        )
+
+    @lru_cache
+    def flow_ip_addresses(self, variable: discovery.Variable) -> list[Communication]:
+        results = [sender.first_addresses for sender in self.senders[variable]]
+        return results
+
+    def time_multi_flow(self) -> list[Plot]:
+        return self._map_plots(
+            lambda variable: [
+                self.pcap(variable, "Receiver", 1).flow_completion_time(*ip_addresses)
+                for ip_addresses in self.flow_ip_addresses(variable)
+            ]
+        )
+
+    def average_time(self) -> list[Plot]:
+        ip_addresses = self.ip_addresses(self.variables[0])
+
+        return self._map_plots(
+            lambda variable: sum(
+                self.pcap(variable, "Receiver", 1)
+                .flow_completion_times(ip_addresses.destination)
+                .values()
+            )
+            / self.number_of_senders
+        )
+
+    def max_flow_time(self) -> list[Plot]:
+        ip_addresses = self.ip_addresses(self.variables[0])
+
+        return self._map_plots(
+            lambda variable: max(
+                self.pcap(variable, "Receiver", 1)
+                .flow_completion_times(ip_addresses.destination)
+                .values()
             )
         )
 
@@ -452,9 +524,24 @@ class Scenario:
         )
 
     @cached_property
+    @_cache_statistic("average_time")
+    def average_time(self) -> statistic.Statistic:
+        return self._map_statistic(VariableRun.average_time)
+
+    @cached_property
+    @_cache_statistic("max_flow_time")
+    def max_flow_time(self) -> statistic.Statistic:
+        return self._map_statistic(VariableRun.max_flow_time)
+
+    @cached_property
     @_cache_statistic("times")
     def times(self) -> statistic.Statistic:
         return self._map_statistic(VariableRun.time)
+
+    @cached_property
+    @_cache_statistic("times_multi_flow")
+    def times_multi_flow(self) -> statistic.Statistic:
+        return self._map_statistic(VariableRun.time_multi_flow)
 
     @cached_property
     @_cache_statistic("packets_lost")
@@ -536,3 +623,13 @@ class Scenario:
     @_cache_statistic("rto_wait_time_for_unsent")
     def rto_wait_time_for_unsent(self) -> statistic.Statistic:
         return self._map_statistic(VariableRun.rto_wait_time_for_unsent)
+
+    @cached_property
+    @_cache_statistic("average_congestion_window")
+    def average_congestion_window(self) -> statistic.Statistic:
+        return self._map_statistic(VariableRun.average_congestion_window)
+
+    @cached_property
+    @_cache_statistic("total_recovery_time")
+    def total_recovery_time(self) -> statistic.Statistic:
+        return self._map_statistic(VariableRun.total_time_in_recovery)
