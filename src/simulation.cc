@@ -244,7 +244,6 @@ void SetupTCPConfig()
     Config::SetDefault("ns3::TcpL4Protocol::RecoveryType",
                        TypeIdValue(TypeId::LookupByName(tcp_recovery)));
     Config::SetDefault("ns3::TcpL4Protocol::SocketType", StringValue(tcp_type));
-    Config::SetDefault("ns3::TcpCubic::HyStart", BooleanValue(false)); 
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(1073741824));
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(1073741824));
     Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
