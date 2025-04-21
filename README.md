@@ -38,11 +38,26 @@ If you want to override the default settings but not vary it, then use the overw
 
 ## :bar_chart: Results
 
+
 After generating the results from the simulations, you will then use the analysis tool to be able to analyze the results. The analysis tool is split into 3 subcomponents:
 
 - Sequence Plotting
 - Bytes In Flight
-- Metric Analysis 
+- Metric Analysis
+
+
+To first setup, you need to make sure you have [poetry](https://python-poetry.org/docs/) installed, which you can do via pip. 
+
+```bash
+python3 -m pip install poetry
+```
+
+after you have done that you install, and activate the poetry shell 
+
+
+```bash
+python3 -m poetry install && python3 -m poetry shell
+```
 
 
 ### :mag_right: Sequence Plotting
