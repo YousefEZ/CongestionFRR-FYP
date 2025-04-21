@@ -1,13 +1,15 @@
 # CongestionFRR
-Congestion Fast Rerouting
 
-place simulations to run in the src/ folder
+
+This is the implementation and tools to evaluate fast rerouting as a congestion control approach at the data plane level. It assesses effectiveness of fast rerouting by proactively mitigating congestion by dynamically directing network traffic through alternative paths. It uses the ns-3 simulator, and can test various scenarios such as different bandwidths, delays, and congestion levels to assess the performance impacts. Documentation, analysis tools, and simulation scripts are provided
+
 
 ## ⚙️ Dependencies
 
 - [Docker](https://docs.docker.com/engine/install/)
 - [docker-compose](https://docs.docker.com/compose/install/)
-
+- [Python3](https://www.python.org/)
+- [Poetry](https://python-poetry.org/docs/)
 
 
 ## :rocket: to run the simulator on an experiment
