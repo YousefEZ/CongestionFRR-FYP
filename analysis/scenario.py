@@ -11,7 +11,7 @@ import rich.progress
 import scapy.packet
 
 from analysis import discovery, statistic
-from analysis.graph import T, Plot
+from analysis.graph import MultiFlowPlot, Plot
 from analysis.pcap import Communication, PcapFile
 from analysis.trace_analyzer.dst.reordered_packets import (
     DroppedRetransmittedPacketCapture,
@@ -259,7 +259,21 @@ class VariableRun:
 
         return burst_capture.longest_spurious_ooo_burst_count
 
-    def _map_plots(self, method: Callable[[str], T]) -> list[Plot[T]]:
+    def _map_multi_flow_plots(
+        self, method: Callable[[str], list[float]]
+    ) -> list[MultiFlowPlot]:
+        return sorted(
+            (
+                MultiFlowPlot(
+                    variable=extract_numerical_value_from_string(variable),
+                    value=method(variable),
+                )
+                for variable in self.variables
+            ),
+            key=lambda plot: plot.variable,
+        )
+
+    def _map_plots(self, method: Callable[[str], float]) -> list[Plot]:
         return sorted(
             (
                 Plot(
@@ -358,13 +372,17 @@ class VariableRun:
         results = [sender.first_addresses for sender in self.senders[variable]]
         return results
 
-    def time_multi_flow(self) -> list[Plot]:
-        return self._map_plots(
-            lambda variable: [
-                self.pcap(variable, "Receiver", 1).flow_completion_time(*ip_addresses)
-                for ip_addresses in self.flow_ip_addresses(variable)
-            ]
-        )
+    def time_multi_flow(self) -> list[MultiFlowPlot]:
+        ip_address = self.ip_addresses(self.variables[0])
+
+        def get_flows(variable: str) -> list[float]:
+            return list(
+                self.pcap(variable, "Receiver", 1)
+                .flow_completion_times(ip_address.destination)
+                .values()
+            )
+
+        return self._map_multi_flow_plots(get_flows)
 
     def average_time(self) -> list[Plot]:
         ip_addresses = self.ip_addresses(self.variables[0])
@@ -523,6 +541,20 @@ class Scenario:
             }
         )
 
+    def _map_multi_flow_statistic(
+        self, method: Callable[[VariableRun], list[MultiFlowPlot]]
+    ) -> statistic.MultiFlowStatistic:
+        return statistic.MultiFlowStatistic(
+            {
+                seed: method(run)
+                for seed, run in rich.progress.track(
+                    self.runs.items(),
+                    console=console,
+                    description=f"Calculating {method.__name__} for {self.option}",
+                )
+            }
+        )
+
     @cached_property
     @_cache_statistic("average_time")
     def average_time(self) -> statistic.Statistic:
@@ -539,9 +571,8 @@ class Scenario:
         return self._map_statistic(VariableRun.time)
 
     @cached_property
-    @_cache_statistic("times_multi_flow")
-    def times_multi_flow(self) -> statistic.Statistic:
-        return self._map_statistic(VariableRun.time_multi_flow)
+    def times_multi_flow(self) -> statistic.MultiFlowStatistic:
+        return self._map_multi_flow_statistic(VariableRun.time_multi_flow)
 
     @cached_property
     @_cache_statistic("packets_lost")

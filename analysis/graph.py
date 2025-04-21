@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
-    Generic,
     NamedTuple,
     NotRequired,
     Optional,
@@ -24,9 +23,10 @@ from analysis.discovery import Options, Seed
 
 
 class Style(TypedDict):
-    marker: str
-    color: str
-    linestyle: str
+    marker: NotRequired[str]
+    color: NotRequired[str]
+    ecolor: NotRequired[str]
+    linestyle: NotRequired[str]
 
 
 class Customisation(TypedDict):
@@ -42,25 +42,28 @@ class Labels(TypedDict):
 T = TypeVar("T")
 
 
-class Plot(BaseModel, Generic[T]):
+class Plot(BaseModel):
     variable: float
-    value: T
+    value: float
 
     def __sub__(self, other: Plot) -> Plot:
         assert self.variable == other.variable, "Variables do not match"
-        if isinstance(self.value, float):
-            return Plot(variable=self.variable, value=self.value - other.value)
-        elif isinstance(self.value, list):
-            return Plot(
-                variable=self.variable,
-                value=[a - b for a, b in zip(self.value, other.value)],
-            )
-        raise NotImplementedError(
-            "Subtraction not implemented for this type, {}".format(type(self.value))
-        )
+        return Plot(variable=self.variable, value=self.value - other.value)
 
     def __hash__(self) -> int:
         return hash((self.variable, self.value))
+
+
+class MultiFlowPlot(BaseModel):
+    variable: float
+    value: list[float]
+
+    def __sub__(self, other: MultiFlowPlot) -> MultiFlowPlot:
+        assert self.variable == other.variable, "Variables do not match"
+        return MultiFlowPlot(
+            variable=self.variable,
+            value=[a - b for a, b in zip(self.value, other.value)],
+        )
 
 
 def _sort_plots(plots: list[Plot]) -> list[Plot]:
@@ -182,10 +185,15 @@ def min_max_plot(
         )
         if styles:
             style = styles.get(option, {})
+            print(style)
             axes.errorbar(
                 [plot.variable for plot in plots],
                 [plot.value for plot in plots],
-                xerr=0,
+                capsize=(
+                    max(plot.variable for plot in plots)
+                    - min(plot.variable for plot in plots)
+                )
+                / (len(plots) * 4),
                 yerr=[
                     [
                         abs(a.value - s.value)
@@ -198,13 +206,17 @@ def min_max_plot(
                 ],
                 label=option,
                 fmt="o",
-                **style.get(option, {}),
+                **style,
             )
         else:
             axes.errorbar(
                 [plot.variable for plot in plots],
                 [plot.value for plot in plots],
-                xerr=0,
+                capsize=(
+                    max(plot.variable for plot in plots)
+                    - min(plot.variable for plot in plots)
+                )
+                / (len(plots) * 4),
                 yerr=[
                     [
                         abs(a.value - s.value)
@@ -295,7 +307,7 @@ class SeededPlots(NamedTuple):
     alternative: list[Plot]
 
 
-def cdf_labelled(
+def cdf_multi_flow(
     plots: dict[str, Sequence[np.number] | NDArray[np.number]],
     labels: Labels,
     target: Optional[str] = None,
@@ -304,6 +316,7 @@ def cdf_labelled(
     figure, axes = plt.subplots(figsize=(10, 6))
 
     for label, plot in plots.items():
+        print(plot)
         axes.hist(
             plot,
             bins=100,

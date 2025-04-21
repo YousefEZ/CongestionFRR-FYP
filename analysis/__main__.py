@@ -628,8 +628,8 @@ def min_max_plot(ctx: click.Context) -> None:
         ),
         target=arguments.output,
         styles={
-            "no_frr_congested": {"ecolor": "blue", "color": "blue"},
-            "frr": {"ecolor": "orange", "color": "orange"},
+            "no_frr_congested": {"ecolor": "orange", "color": "orange"},
+            "frr": {"ecolor": "blue", "color": "blue"},
         },
     )
 
