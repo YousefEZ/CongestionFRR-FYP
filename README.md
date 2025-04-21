@@ -64,11 +64,21 @@ python3 -m poetry install && python3 -m poetry shell
 
 The sequence plotting tool used generates a stevensons sequence plot of the results. This is useful for visualizing the results of the simulation and understanding the performance of the system. It also includes specific labelling of packets such as whether its an out of order packet or a spurious retransmission. You can specify 
 
+```bash
+python3 analysis sequence -d <path_to_dir> --option <option> --value <value> --seed <seed> --sender <traffic_sender_number> --sender-seq --sender-ack --receiver-ack
+```
+
+- option should be like `frr` or `no_frr_congested`
+- value should be the variable that you are fixing against
+- seed should be the seed + run, so if the seed is 743281 and the run is 15 then it would be 74328115
+- sender which is used if you have multiple flows otherwise defaults to 0 (the first sender)
+- the other flags --sender-seq, --sender-ack, --receiver-ack is to control which sequence plots to display and the labelling for the packets
 
 
 ### :airplane: Bytes in Flight
 
 This tool allows for visualizing the numbre of bytes in Flight as well as the congestion window size, and the "true" bytes in flight, which is basically accounting for dropped packets by checking if it was ever received by the receiver or not. 
+The usage of this subtool is similar to that of the sequence plotting 
 
 
 ### :bar_chart: Metric Analysis 
@@ -76,7 +86,7 @@ This tool allows for visualizing the numbre of bytes in Flight as well as the co
 This is the main tool that is used to analyze how effective the FRR scheme is when varying it under different variables, there are a lot of metrics available to be extracted. Use the following command to navigate through it 
 
 ```bash
-poetry run analysis graph -d <path_to_dir> <metric> <graph_type> 
+python3 analysis graph -d <path_to_dir> <metric> <graph_type> 
 ```
 
 
@@ -84,20 +94,20 @@ where metric is something like time, and the graph_type can be plot. To see all 
 
 
 ```bash 
-poetry run analysis graph --help 
+python3 analysis graph --help 
 ```
 
 and this will tell you all the available metrics that you can use. To see what type of graphs you can make you can use the following
 
 
 ```bash
-poetry run analysis graph time --help 
+python3 analysis graph -d traces/delay time --help 
 ```
 
 if you want to compare metrics against one another you can use `against`, which allows you to form a scatter graph 
 
 ```bash 
-poetry run analysis graph -d traces/delay --output outputs/time_vs_spurious time against spurious_retransmissions scatter
+python3 analysis graph -d traces/delay --output outputs/time_vs_spurious time against spurious_retransmissions scatter
 ```
 
 
